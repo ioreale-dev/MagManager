@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>MagManager</title>
+<meta name="theme-color" content="#1d232b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="MagManager">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+/* MagManager funziona senza internet: nessun carattere o libreria da rete, tutto è in questa cartella. */
+html,body{margin:0}
+body{font-size:15px;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+/* Layout: scena 3D a tutto schermo. Sopra: etichette delle corsie, barra con Indietro e legenda luci, scheda della sezione (a destra su PC, dal basso sul telefono). Aspetto unico da studio fotografico. */
+:root{ --wall:#d3d4d5; --floor:#ececec; --ink:#1d232b; --muted:#5a636e; --paper:#ffffff; --line:#d5d9de; --blue:#1d4ed8; --on-blue:#ffffff;
+  --sel:#ffc21a; --sel-ink:#1d232b; --sel-bordo:#d99a00;
+  --verde:#1f9d4c; --giallo:#d99a00; --rosso:#d4342a; --bad:#b3261e;
+  --display:"Avenir Next Condensed","Bahnschrift SemiCondensed","Arial Narrow","Roboto Condensed",sans-serif-condensed,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; }
+html,body{height:100%}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+body{background:linear-gradient(to bottom,var(--wall) 0%,#e0e1e2 44%,var(--floor) 58%,#f0f0f0 100%);color:var(--ink);overflow:hidden;font-family:var(--body)}
+button,input{font:inherit;color:inherit}
+#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#scene.hot{cursor:pointer}
+#scene.ruota{cursor:grabbing}
+#raddrizza{position:fixed;z-index:4;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));height:42px;padding:0 14px;border:2px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);font-weight:600;cursor:pointer}
+#raddrizza:hover,#raddrizza:focus-visible{background:var(--ink);color:var(--paper);outline:none}
+body.con-scheda #raddrizza{right:calc(400px + 16px)}
+@media (max-width:759px){ body.con-scheda #raddrizza{bottom:calc(58% + 12px)} }
+#labels,#plabels,#assi{position:fixed;inset:0;pointer-events:none}
+.asse{position:absolute;transform:translate(-50%,-50%);min-width:30px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.88);color:var(--ink);font:700 1.15rem/1.2 var(--display);text-align:center;box-shadow:0 1px 3px rgba(20,25,32,.15)}
+.asse.titolo{font:600 .78rem/1.2 var(--body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:none;box-shadow:none}
+.tag{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;min-width:34px;height:34px;padding:0 8px;border:2px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);font:700 1.25rem/1 var(--display);cursor:pointer;box-shadow:0 2px 6px rgba(20,25,32,.18)}
+.tag:hover,.tag.hot,.tag:focus-visible{background:var(--sel);border-color:var(--sel-bordo);color:var(--sel-ink);outline:none}
+.ptag{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;width:30px;height:30px;border:2px solid var(--ink);border-radius:50%;background:var(--paper);font:700 1.05rem/1 var(--display);cursor:pointer}
+.ptag:hover,.ptag:focus-visible{background:var(--ink);color:var(--paper);outline:none}
+#bar{position:fixed;top:0;left:0;right:0;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding-top:calc(14px + env(safe-area-inset-top,0px));padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+#bar > *{pointer-events:auto}
+#back{display:inline-flex;align-items:center;gap:6px;height:42px;padding:0 16px;border:2px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);font-weight:600;cursor:pointer}
+#back:hover,#back:focus-visible{background:var(--ink);color:var(--paper);outline:none}
+#titolo{margin:0;font:700 1.9rem/1 var(--display);letter-spacing:.01em}
+.legenda{display:flex;flex-wrap:wrap;gap:6px 14px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,.82);font-size:.9rem;font-weight:500}
+.legenda span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.dot.libero{background:var(--verde)} .dot.parziale{background:var(--giallo)} .dot.pieno{background:var(--rosso)}
+#nota{font-size:.875rem;color:var(--bad);background:rgba(255,255,255,.9);padding:4px 8px;border-radius:4px}
+
+#panel{position:fixed;z-index:3;display:flex;flex-direction:column;background:var(--paper);box-shadow:-6px 0 24px rgba(20,25,32,.14);
+  top:0;right:0;bottom:0;width:400px;padding-top:env(safe-area-inset-top,0px);padding-right:env(safe-area-inset-right,0px)}
+@media (max-width:759px){#panel{top:auto;left:0;width:auto;height:58%;border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(20,25,32,.16);padding-right:0;padding-top:0;padding-bottom:env(safe-area-inset-bottom,0px)}}
+.phead{padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.phead p{margin:0;color:var(--muted);font-size:.9rem}
+.phead h2{margin:2px 0 8px;font:700 1.7rem/1.05 var(--display)}
+.pbody{flex:1;overflow-y:auto;padding:14px 18px 24px;display:flex;flex-direction:column;gap:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-weight:600;font-size:.85rem;border:1px solid currentColor}
+.pill.libero{color:var(--verde)} .pill.parziale{color:#9a6c00} .pill.pieno{color:var(--rosso)}
+.pill.libero::before,.pill.parziale::before,.pill.pieno::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.npal{display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:600}
+.step{display:flex;align-items:center;gap:4px}
+.step button{width:40px;height:40px;border:1px solid var(--line);border-radius:6px;background:#f3f4f6;font-size:1.2rem;font-weight:600;cursor:pointer}
+.step output{min-width:36px;text-align:center;font:700 1.5rem var(--display);font-variant-numeric:tabular-nums}
+.pal{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.pal.occ{border-left:5px solid var(--rosso)} .pal.free{border-left:5px solid var(--verde)}
+.pal h3{margin:0;display:flex;align-items:center;justify-content:space-between;gap:8px;font:700 1.25rem/1 var(--display)}
+label{display:flex;flex-direction:column;gap:4px;font-size:.875rem;font-weight:500;color:var(--muted);min-width:0}
+label input{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font-size:1rem;width:100%}
+input:focus-visible,button:focus-visible{outline:3px solid var(--blue);outline-offset:1px}
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:8px}
+.tre2{display:grid;grid-template-columns:minmax(0,1fr) 108px;gap:8px;align-items:end}
+.pill.tipo{color:var(--muted);font-size:.78rem;padding:1px 8px}
+.pill.manca{color:var(--bad)}
+.tre{display:grid;grid-template-columns:minmax(0,1.3fr) 86px minmax(0,1fr);gap:8px;align-items:end}
+label select{padding:8px 6px;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font-size:1rem;font-weight:600;width:100%;height:40px}
+.lotti{display:flex;flex-direction:column;gap:6px}
+.lotti h4{margin:4px 0 0;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.lotto{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:8px;align-items:end}
+.btn{padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-weight:600;cursor:pointer;min-height:38px}
+.btn:hover{border-color:var(--ink)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.err{margin:0;color:var(--bad);font-weight:500}
+.hint{margin:0;color:var(--muted);font-size:.9rem}
+#salva{padding:10px 18px;border-top:1px solid var(--line);color:var(--muted);font-size:.875rem}
+#cerca{position:fixed;z-index:4;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:max(16px,env(safe-area-inset-left,0px));width:min(360px,calc(100vw - 32px));display:flex;gap:6px}
+#cerca .campo{flex:1;min-width:0}
+#modo{flex:none;height:42px;padding:0 6px;border:2px solid var(--ink);border-radius:6px;background:var(--paper);color:var(--ink);font:600 .85rem var(--body);letter-spacing:.02em;cursor:pointer}
+#modo:focus-visible{outline:3px solid var(--blue);outline-offset:1px}
+#apriProdotti{position:fixed;z-index:4;top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));width:46px;height:42px;display:flex;align-items:center;justify-content:center;border:2px solid var(--ink);border-radius:6px;background:var(--ink);cursor:pointer}
+#apriProdotti:hover,#apriProdotti:focus-visible{background:var(--blue);border-color:var(--blue);outline:none}
+.burger,.burger::before,.burger::after{display:block;width:20px;height:2.5px;border-radius:2px;background:var(--paper)}
+.burger{position:relative}
+.burger::before,.burger::after{content:"";position:absolute;left:0}
+.burger::before{top:-6.5px} .burger::after{top:6.5px}
+body.con-scheda #apriProdotti{right:calc(400px + 16px)}
+#risultati{position:absolute;left:0;bottom:100%;margin:0 0 6px;width:min(360px,calc(100vw - 32px))}
+#q{width:100%;height:42px;padding:0 12px 0 38px;border:2px solid var(--ink);border-radius:6px;background:var(--paper) no-repeat 12px 50%/16px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='6.5' cy='6.5' r='5' fill='none' stroke='%231d232b' stroke-width='2'/%3E%3Cpath d='M10.5 10.5 15 15' stroke='%231d232b' stroke-width='2'/%3E%3C/svg%3E");font-size:1rem}
+#q:focus-visible{outline:3px solid var(--blue);outline-offset:1px}
+#risultati{list-style:none;padding:4px;max-height:min(60vh,420px);overflow-y:auto;background:var(--paper);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(20,25,32,.16)}
+#risultati li{padding:8px 10px;border-radius:6px;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px}
+#risultati li[aria-selected="true"],#risultati li:hover{background:#e8eefc}
+#risultati b{font-weight:600;overflow-wrap:anywhere}
+#risultati .dove{font:700 1.05rem/1.2 var(--display);text-align:right}
+#risultati small{grid-column:1 / -1;color:var(--muted);overflow-wrap:anywhere}
+#risultati .vuoto{cursor:default;color:var(--muted);display:block}
+#bar{padding-right:78px}
+@media (min-width:760px){ body.con-scheda #bar{padding-right:478px} }
+#drawer{position:fixed;z-index:6;top:0;right:0;bottom:0;width:420px;max-width:100%;display:flex;flex-direction:column;background:var(--paper);box-shadow:-10px 0 32px rgba(20,25,32,.22);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px);animation:entra .22s ease-out}
+@keyframes entra{from{transform:translateX(40px);opacity:0}}
+@media (prefers-reduced-motion:reduce){#drawer{animation:none}}
+#drawer .dh{display:flex;align-items:center;gap:10px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+#drawer .dh h2{margin:0;font:700 1.7rem/1 var(--display)}
+#drawer .dh span{color:var(--muted);font-size:.9rem;margin-right:auto}
+#drawer .db{flex:1;overflow-y:auto;padding:14px 18px 24px;display:flex;flex-direction:column;gap:14px}
+#fNuovo{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#f6f7f9}
+#fNuovo h3{margin:0;font:700 1.15rem/1 var(--display)}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.btn.primary:hover{background:var(--blue);border-color:var(--blue)}
+#dFiltro{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:1rem}
+#dLista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+#dLista li{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:start}
+.prow b{font-weight:600;overflow-wrap:anywhere}
+.prow .uso{font-size:.85rem;color:var(--muted);text-align:right;white-space:nowrap}
+.prow .uso.si{color:var(--rosso);font-weight:600}
+.prow small{grid-column:1 / -1;color:var(--muted);overflow-wrap:anywhere}
+.dove-lista{display:flex;flex-wrap:wrap;gap:6px}
+.dove-lista button{padding:4px 8px;border:1px solid var(--blue);border-radius:4px;background:var(--paper);color:var(--blue);font-weight:600;font-size:.85rem;cursor:pointer}
+.desc{margin:-4px 0 0;color:var(--muted);font-size:.875rem}
+@media (max-width:759px){
+  body.con-scheda #cerca{bottom:calc(58% + 12px)}
+  body.con-scheda #apriProdotti{right:max(16px,env(safe-area-inset-right,0px))}
+}
+.pal.trovato{outline:3px solid var(--sel-bordo);outline-offset:2px;animation:trovato 1.2s ease-out 2}
+.ptag.trovato{background:var(--sel);border-color:var(--sel-bordo);color:var(--sel-ink)}
+@keyframes trovato{0%{outline-color:transparent}40%{outline-color:var(--sel-bordo)}}
+@media (prefers-reduced-motion:reduce){.pal.trovato{animation:none}}
+#marchio{position:fixed;z-index:3;top:calc(18px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));font:700 1.7rem/1 var(--display);letter-spacing:.01em;color:var(--ink);pointer-events:none}
+body.non-home #marchio{display:none}
+.dati{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding-top:14px;border-top:1px solid var(--line)}
+.dati h3{margin:0;font:700 1.15rem/1 var(--display)}
+.dati .hint{margin:0}
+label.btn{display:inline-flex;align-items:center;color:var(--ink);font-size:1rem}
+#blocco{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:var(--wall);padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.pinBox{width:min(360px,100%);display:flex;flex-direction:column;gap:12px;padding:24px;border-radius:12px;background:var(--paper);box-shadow:0 10px 36px rgba(20,25,32,.18)}
+.pinBox .nome{margin:0;font:700 1.1rem/1 var(--display);color:var(--muted);letter-spacing:.04em}
+.pinBox h2{margin:0;font:700 1.8rem/1.05 var(--display)}
+.pinBox .hint{margin:0}
+#pin{height:52px;padding:0 14px;border:2px solid var(--ink);border-radius:8px;font-size:1.6rem;letter-spacing:.4em;text-align:center}
+#pinErr{min-height:1.2em}
+#msg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+</style>
+<canvas id="scene" role="img" aria-label="Il magazzino: sette scaffalature porta-pallet, dalla corsia A a destra alla G a sinistra"></canvas>
+<div id="labels" aria-label="Corsie"></div>
+<div id="plabels" aria-label="Pallet della sezione"></div>
+<div id="assi" aria-hidden="true" hidden></div>
+<div id="bar" hidden>
+  <button id="back" type="button">← Indietro</button>
+  <h1 id="titolo"></h1>
+  <div class="legenda" aria-label="Legenda luci"><span><i class="dot libero"></i>Libero</span><span><i class="dot parziale"></i>In parte occupato</span><span><i class="dot pieno"></i>Pieno</span></div>
+  <span id="nota" hidden></span>
+</div>
+<aside id="panel" hidden aria-labelledby="ptitle">
+  <div class="phead"><p id="psub"></p><h2 id="ptitle"></h2><span id="pstato" class="pill"></span></div>
+  <div class="pbody" id="pbody"></div>
+  <div id="salva" role="status" aria-live="polite"></div>
+</aside>
+<div id="cerca" role="search">
+  <select id="modo" aria-label="Criterio di ricerca"><option value="articolo">COD. ARTICOLO</option><option value="lotto">LOTTO</option></select>
+  <div class="campo">
+    <input id="q" type="search" placeholder="Cerca…" aria-label="Cerca per codice articolo" autocomplete="off" spellcheck="false"
+      role="combobox" aria-expanded="false" aria-controls="risultati" aria-autocomplete="list">
+    <ul id="risultati" role="listbox" aria-label="Pallet trovati" hidden></ul>
+  </div>
+</div>
+<button id="apriProdotti" type="button" aria-expanded="false" aria-controls="drawer" aria-label="Menù prodotti" title="Prodotti"><span class="burger" aria-hidden="true"></span></button>
+<aside id="drawer" hidden aria-labelledby="dTitolo">
+  <div class="dh"><h2 id="dTitolo">Prodotti</h2><span id="dConta"></span><button class="btn" type="button" id="chiudiProdotti">Chiudi</button></div>
+  <div class="db">
+    <form id="fNuovo" novalidate>
+      <h3>Nuovo prodotto</h3>
+      <div class="tre2">
+        <label>Codice prodotto<input id="nCodice" maxlength="40" autocomplete="off" spellcheck="false"></label>
+        <label>Tipo unità<select id="nTipo"><option value="">Scegli…</option><option>BOX</option><option>ROLL</option></select></label>
+      </div>
+      <label>Descrizione<input id="nDesc" maxlength="120" autocomplete="off"></label>
+      <p class="err" id="nErr" role="alert" hidden></p>
+      <div class="row"><button class="btn primary" type="submit">Aggiungi prodotto</button></div>
+    </form>
+    <input id="dFiltro" type="search" placeholder="Filtra per codice o descrizione" aria-label="Filtra l'elenco prodotti" autocomplete="off">
+    <ul id="dLista"></ul>
+    <section class="dati" aria-labelledby="datiTitolo">
+      <h3 id="datiTitolo">Dati e sicurezza</h3>
+      <p class="hint">I dati restano su questo dispositivo. Esporta un file per tenerne una copia o per portarli sull'altro dispositivo; importandolo, vince la modifica più recente di ogni sezione e prodotto.</p>
+      <p class="hint" id="ultimoBackup"></p>
+      <div class="row">
+        <button class="btn primary" type="button" id="esporta">Esporta dati</button>
+        <label class="btn" for="importaFile">Importa dati</label>
+        <input type="file" id="importaFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="hint" id="datiEsito" role="status" aria-live="polite"></p>
+      <div class="row">
+        <button class="btn" type="button" id="cambiaPin">Cambia PIN</button>
+        <button class="btn" type="button" id="bloccaOra">Blocca ora</button>
+      </div>
+    </section>
+  </div>
+</aside>
+<datalist id="catList"></datalist>
+<button id="raddrizza" type="button" hidden>↺ Raddrizza vista</button>
+<div id="marchio" aria-hidden="true">MagManager</div>
+<div id="blocco">
+  <form id="pinForm" class="pinBox" novalidate>
+    <p class="nome">MagManager</p>
+    <h2 id="pinTitolo">Apertura…</h2>
+    <p id="pinTesto" class="hint"></p>
+    <input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" aria-labelledby="pinTitolo">
+    <p id="pinErr" class="err" role="alert"></p>
+    <div class="row"><button class="btn primary" type="submit">Conferma</button><button class="btn" type="button" id="pinAnnulla" hidden>Annulla</button></div>
+  </form>
+</div>
+<div id="msg" hidden></div>
+<script src="three.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const msg = t => { $('msg').textContent = t; $('msg').hidden = false; };
+if (!window.THREE) { msg('La grafica del magazzino non si è caricata. Controlla la connessione e riapri la pagina.'); return; }
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* --- misure in metri, ricavate dalla foto --- */
+const M = { altezza:7.5, campata:2.7, campate:4, livelli:4, profondita:1.1, schiena:0.25, corridoio:4.4,
+            correnti:[2.25,4.35,6.45], maxPallet:6 };
+const L = M.campate*M.campata;
+/* File da sinistra a destra. doppia = due scaffali schiena contro schiena. */
+const FILE = [ {doppia:false}, {doppia:true}, {doppia:true}, {doppia:true} ];
+
+/* --- le 7 corsie: stessa geometria, dati propri ---
+   faccia: +1 se lo scaffale si affaccia verso destra (x crescente), -1 verso sinistra.
+   Sezione = campata × livello, codice corsia-campata-livello (es. A-2-3).
+   La campata 1 è la più a sinistra guardando dal corridoio; il livello 1 è a terra. */
+const CORSIE = [];
+{ let x = 0;
+  for (const f of FILE) {
+    if (f.doppia) {
+      CORSIE.push({x0:x, faccia:-1});
+      CORSIE.push({x0:x + M.profondita + M.schiena, faccia:1});
+      x += M.profondita*2 + M.schiena;
+    } else { CORSIE.push({x0:x, faccia:1}); x += M.profondita; }
+    x += M.corridoio;
+  }
+  /* le lettere corrono da destra a sinistra: A è la fila più a destra, G la singola a sinistra */
+  CORSIE.forEach((c,i) => { c.id = 'GFEDCBA'[i]; c.x1 = c.x0 + M.profondita; c.xf = c.faccia > 0 ? c.x1 : c.x0; });
+}
+const X_FINE = CORSIE[CORSIE.length-1].x1;
+const QUOTE = [0, ...M.correnti, M.altezza];
+const pianoDi = l => l === 1 ? .02 : M.correnti[l-2] + .08;     /* quota su cui poggiano i pallet */
+const sezId = (c,k,l) => `${c.id}-${k}-${l}`;        /* chiave nel database: resta in cifre */
+/* Le campate (colonne) si mostrano in numeri romani: A-2-3 diventa A-II-3. */
+const ROMANI = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+const romano = k => ROMANI[k] || String(k);
+const codiceSez = id => { const [c,k,l] = id.split('-'); return `${c}-${romano(+k)}-${l}`; };
+function cella(c, campata, livello) {
+  const zSinistra = c.faccia > 0 ? 0 : -L, verso = c.faccia > 0 ? -1 : 1;
+  const za = zSinistra + verso*(campata-1)*M.campata, zb = za + verso*M.campata;
+  return new THREE.Box3(new THREE.Vector3(c.x0, QUOTE[livello-1], Math.min(za,zb)), new THREE.Vector3(c.x1, QUOTE[livello], Math.max(za,zb)));
+}
+
+const canvas = $('scene');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true}); }
+catch { msg('Questo browser non riesce a mostrare la grafica 3D del magazzino.'); return; }
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcfcfcf, 0.62));
+const sun = new THREE.DirectionalLight(0xffffff, 0.3);
+sun.position.set(31.6, 26, 16);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.radius = 5;
+Object.assign(sun.shadow.camera, {left:-30, right:30, top:30, bottom:-30, near:1, far:70});
+sun.target.position.set(11.6, 0, -6);
+scene.add(sun, sun.target);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({opacity:0.1}));
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+/* fori dei montanti */
+const tc = document.createElement('canvas'); tc.width = tc.height = 64;
+{ const g = tc.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,64,64); g.fillStyle = '#5b636c';
+  for (const x of [20,44]) for (const y of [14,44]) g.fillRect(x-3,y-8,6,16); }
+const fori = new THREE.CanvasTexture(tc);
+fori.wrapS = fori.wrapT = THREE.RepeatWrapping; fori.repeat.set(1,50); fori.anisotropy = 8; fori.encoding = THREE.sRGBEncoding;
+const BASE = {
+  acciaio:   new THREE.MeshLambertMaterial({color:0xb4bac1, map:fori}),
+  piastra:   new THREE.MeshLambertMaterial({color:0xa8aeb5}),
+  traverso:  new THREE.MeshLambertMaterial({color:0xeef0f2}),
+  corrente:  new THREE.MeshLambertMaterial({color:0x1d57a3}),
+  protezione:new THREE.MeshLambertMaterial({color:0x2363b3}),
+};
+const CORNICE = new THREE.MeshBasicMaterial({color:0xffc21a});   /* selezione: gialla */
+
+/* --- costruzione: ogni corsia ha i suoi pezzi, così si può nascondere da sola --- */
+const up = new THREE.Vector3(0,1,0), tmp = new THREE.Vector3(), box = new THREE.BoxGeometry(1,1,1);
+function costruisci(c) {
+  const parts = {acciaio:[], piastra:[], traverso:[], corrente:[], protezione:[]};
+  const bar = (k, a, b, w, h) => {
+    const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b);
+    const q = new THREE.Quaternion().setFromUnitVectors(up, tmp.copy(B).sub(A).normalize());
+    parts[k].push(new THREE.Matrix4().compose(A.clone().add(B).multiplyScalar(.5), q, new THREE.Vector3(w, A.distanceTo(B), h)));
+  };
+  const x = c.x0, x2 = c.x1, H = M.altezza, xCorr = c.faccia > 0 ? x2 + .13 : x - .13;
+  for (let k=0;k<=M.campate;k++) {
+    const z = -k*M.campata;
+    bar('acciaio', [x,0,z], [x,H,z], .09, .12);
+    bar('acciaio', [x2,0,z], [x2,H,z], .09, .12);
+    const n = 3;
+    for (let i=0;i<=n;i++) {
+      const y = .22 + i*(H-.34)/n;
+      bar('traverso', [x,y,z], [x2,y,z], .045, .045);
+      if (i<n) { const y2 = .22 + (i+1)*(H-.34)/n;
+        bar('traverso', [x,y,z], [x2,y2,z], .055, .05); bar('traverso', [x2,y,z], [x,y2,z], .055, .05); }
+    }
+    for (const px of [x,x2]) bar('piastra', [px-.1,.012,z], [px+.1,.012,z], .024, .18);
+    bar('protezione', [xCorr,0,z], [xCorr,.34,z], .14, .14);
+  }
+  for (let k=0;k<M.campate;k++) {
+    const z1 = -k*M.campata, z2 = z1 - M.campata;
+    for (const y of M.correnti) for (const bx of [x,x2]) bar('corrente', [bx,y,z1], [bx,y,z2], .05, .15);
+  }
+  for (const z of [.24, -L-.24]) {
+    bar('protezione', [x-.06,.42,z], [x2+.06,.42,z], .1, .13);
+    for (const px of [x-.06, x2+.06]) bar('protezione', [px,0,z], [px,.47,z], .1, .13);
+  }
+  c.mats = []; c.meshes = [];
+  for (const k in parts) {
+    const mat = BASE[k].clone();
+    const m = new THREE.InstancedMesh(box, mat, parts[k].length);
+    parts[k].forEach((mx,i) => m.setMatrixAt(i,mx));
+    m.castShadow = m.receiveShadow = true; m.frustumCulled = false;
+    scene.add(m); c.mats.push(mat); c.meshes.push(m);
+  }
+  /* pulsante della home: la testata dello scaffale */
+  c.zona = new THREE.Box3(new THREE.Vector3(x-.12, 0, -.25), new THREE.Vector3(x2+.12, H+.1, .5));
+  c.cornice = new THREE.Group();
+  const t = .07, zc = .32, xa = x-.1, xb = x2+.1, yb = .05, yt = H+.08;
+  for (const [cx,cy,sx,sy] of [[xa,(yb+yt)/2,t,yt-yb+t],[xb,(yb+yt)/2,t,yt-yb+t],[(xa+xb)/2,yb,xb-xa+t,t],[(xa+xb)/2,yt,xb-xa+t,t]]) {
+    const m = new THREE.Mesh(box, CORNICE); m.position.set(cx,cy,zc); m.scale.set(sx,sy,t); c.cornice.add(m);
+  }
+  c.cornice.visible = false;
+  scene.add(c.cornice);
+}
+CORSIE.forEach(costruisci);
+
+/* cornice blu sul fronte di una sezione */
+const corniceSez = new THREE.Group(); scene.add(corniceSez);
+function mostraCorniceSez(c, k, l) {
+  corniceSez.clear();
+  if (!c) return;
+  const b = cella(c,k,l), t = .06, x = c.xf + c.faccia*.3;
+  const y0 = b.min.y + .04, y1 = b.max.y - .04, z0 = b.min.z + .06, z1 = b.max.z - .06;
+  for (const [cy,cz,sy,sz] of [[(y0+y1)/2,z0,y1-y0+t,t],[(y0+y1)/2,z1,y1-y0+t,t],[y0,(z0+z1)/2,t,z1-z0+t],[y1,(z0+z1)/2,t,z1-z0+t]]) {
+    const m = new THREE.Mesh(box, CORNICE); m.position.set(x,cy,cz); m.scale.set(t,sy,sz); corniceSez.add(m);
+  }
+}
+
+/* --- luci: verde libero, giallo in parte occupato, rosso pieno --- */
+const gc = document.createElement('canvas'); gc.width = 4; gc.height = 128;
+{ const g = gc.getContext('2d'), gr = g.createLinearGradient(0,0,0,128);
+  gr.addColorStop(0,'#000'); gr.addColorStop(.55,'#2a2a2a'); gr.addColorStop(1,'#fff'); g.fillStyle = gr; g.fillRect(0,0,4,128); }
+const alone = new THREE.CanvasTexture(gc);
+const COLORI = {libero:0x22b357, parziale:0xf2b100, pieno:0xe0352b};
+const LUCE = {};
+for (const k in COLORI) LUCE[k] = {
+  piano: new THREE.MeshBasicMaterial({color:COLORI[k], transparent:true, opacity:.8, depthWrite:false}),
+  fronte:new THREE.MeshBasicMaterial({color:COLORI[k], transparent:true, opacity:.6, alphaMap:alone, depthWrite:false, side:THREE.DoubleSide}),
+};
+const pianoGeo = new THREE.PlaneGeometry(1,1);
+const luci = new THREE.Group(); scene.add(luci);
+function luciAlpha(a) { for (const k in LUCE) { LUCE[k].piano.opacity = .8*a; LUCE[k].fronte.opacity = .6*a; } luci.visible = a > .001; }
+
+/* --- merce: ogni pallet occupato mostra la sua merce, in grigio ---
+   ROLL: rotoli lunghi avvolti nel film, con due reggette, coricati paralleli al corrente, impilati a strati.
+   BOX: scatole impilate a strati, con il nastro sul coperchio.
+   Il numero di pezzi è "Unità per prodotto"; se non ci stanno sul ripiano se ne mostrano quanti ci stanno. */
+const TIPI = ['BOX', 'ROLL'];
+const ROLL = {r:.112, passo:.24, pallet:.14};
+const SCATOLA = {l:.34, p:.3, h:.27, gioco:.02};
+const CARICO_MAX = 1.6;     /* altezza massima della merce su un pallet, in metri */
+const MERCE_BASE = {
+  rotoloA: new THREE.MeshPhongMaterial({color:0x9da3aa, shininess:70, specular:0x555b62}),
+  rotoloB: new THREE.MeshPhongMaterial({color:0x8a9098, shininess:70, specular:0x555b62}),
+  reggia:  new THREE.MeshLambertMaterial({color:0x3a3f46}),
+  legno:   new THREE.MeshLambertMaterial({color:0x8f949a}),
+  scatola: new THREE.MeshLambertMaterial({color:0xb9bdc2}),
+  nastro:  new THREE.MeshLambertMaterial({color:0x7d838a}),
+  bobina:  new THREE.MeshPhongMaterial({color:0xd2d5d9, shininess:90, specular:0x6a7078}),
+  ciuffo:  new THREE.MeshPhongMaterial({color:0xc4c8cd, shininess:90, specular:0x6a7078}),
+};
+/* Codici COMAR: grandi bobine in piedi, avvolte nel film con il ciuffo in cima e tre reggette, su pallet (dalla foto). */
+const BOBINA = {r:.23, gioco:.02, hMax:1.45};
+const cilindro = new THREE.CylinderGeometry(1, 1, 1, 22);
+const cono = new THREE.CylinderGeometry(.25, 1, 1, 14);
+const versoZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), Math.PI/2), fermo = new THREE.Quaternion();
+const mat4 = (x,y,z,q,sx,sy,sz) => new THREE.Matrix4().compose(new THREE.Vector3(x,y,z), q, new THREE.Vector3(sx,sy,sz));
+function costruisciMerce() {
+  for (const c of CORSIE) {
+    for (const m of c.mmeshes || []) { scene.remove(m); m.dispose(); }
+    c.mmeshes = [];
+    c.mmats = c.mmats || Object.fromEntries(Object.entries(MERCE_BASE).map(([k,v]) => [k, v.clone()]));
+    const pezzi = {rotoloA:[], rotoloB:[], reggia:[], legno:[], scatola:[], nastro:[], bobina:[], ciuffo:[]};
+    const xc = (c.x0 + c.x1)/2, prof = M.profondita;
+    for (let k=1;k<=M.campate;k++) for (let l=1;l<=M.livelli;l++) {
+      const id = sezId(c,k,l), pal = palletDi(id), n = pal.length;
+      if (!n) continue;
+      const b = cella(c,k,l), z0 = b.min.z + .12, z1 = b.max.z - .12, g = .08, w = (z1 - z0 - g*(n-1))/n;
+      pal.forEach((p,i) => {
+        const tot = Math.floor(Number(p.unitaProdotto)) || 0;
+        if (!occupato(p) || tot <= 0) return;
+        const tipo = tipoDi(p);
+        const za = c.faccia > 0 ? z1 - i*(w+g) - w : z0 + i*(w+g), mid = za + w/2, len = w - .02;
+        const ys = pianoDi(l);
+        pezzi.legno.push(mat4(xc, ys + ROLL.pallet - .02, mid, fermo, prof - .06, .03, len));
+        for (const xs of [c.x0 + .1, xc, c.x1 - .1]) pezzi.legno.push(mat4(xs, ys + .06, mid, fermo, .1, .1, len - .04));
+        const base = ys + ROLL.pallet, cima = Math.min(base + CARICO_MAX, l < M.livelli ? M.correnti[l-1] - .12 : M.altezza + .3);
+        if (chiave(p.codice).startsWith('comar')) {
+          const d = BOBINA.r*2 + BOBINA.gioco, h = Math.max(.4, Math.min(BOBINA.hMax, cima - base - .12));
+          const lungo = Math.max(1, Math.floor((len + BOBINA.gioco)/d)), fondo = Math.max(1, Math.floor((prof - .02)/d));
+          const quanti = Math.min(tot, lungo*fondo), colonne = Math.ceil(quanti/fondo);
+          for (let j=0;j<quanti;j++) {          /* a coppie in profondità, gruppo centrato: come nella foto */
+            const a = Math.floor(j/fondo), r = j % fondo, inColonna = Math.min(fondo, quanti - a*fondo);
+            const zz = mid + (a - (colonne-1)/2)*d, xx = xc + (r - (inColonna-1)/2)*d;
+            pezzi.bobina.push(mat4(xx, base + h/2, zz, fermo, BOBINA.r, h, BOBINA.r));
+            for (const f of [.2, .52, .84]) pezzi.reggia.push(mat4(xx, base + h*f, zz, fermo, BOBINA.r*1.03, .045, BOBINA.r*1.03));
+          }
+          return;
+        }
+        if (tipo === 'BOX') {
+          const lz = SCATOLA.l + SCATOLA.gioco, px = SCATOLA.p + SCATOLA.gioco;
+          const lungo = Math.max(1, Math.floor(len/lz)), fondo = Math.max(1, Math.floor((prof - .04)/px));
+          const perStrato = lungo*fondo, strati = Math.max(1, Math.floor((cima - base)/SCATOLA.h));
+          const quanti = Math.min(tot, perStrato*strati);
+          for (let j=0;j<quanti;j++) {
+            const s = Math.floor(j/perStrato), q = j - s*perStrato, a = q % lungo, r = Math.floor(q/lungo);
+            const zz = mid + (a - (lungo-1)/2)*lz, xx = xc + (r - (fondo-1)/2)*px, yy = base + SCATOLA.h*(s + .5);
+            pezzi.scatola.push(mat4(xx, yy, zz, fermo, SCATOLA.p, SCATOLA.h - .006, SCATOLA.l));
+            pezzi.nastro.push(mat4(xx, yy + SCATOLA.h/2 - .002, zz, fermo, .06, .008, SCATOLA.l + .004));
+          }
+          return;
+        }
+        const perStrato = Math.max(1, Math.floor((prof - .02)/ROLL.passo));
+        const strati = Math.max(1, Math.floor((cima - base)/(ROLL.passo*.97)));
+        const quanti = Math.min(tot, perStrato*strati);
+        for (let j=0;j<quanti;j++) {
+          const s = Math.floor(j/perStrato), q = j - s*perStrato, inStrato = Math.min(perStrato, quanti - s*perStrato);
+          const xx = xc + (q - (inStrato-1)/2)*ROLL.passo, yy = base + ROLL.r + s*ROLL.passo*.97;
+          pezzi[s % 2 ? 'rotoloB' : 'rotoloA'].push(mat4(xx, yy, mid, versoZ, ROLL.r, len, ROLL.r));
+          for (const f of [-.3, .3]) pezzi.reggia.push(mat4(xx, yy, mid + f*len, versoZ, ROLL.r*1.05, .035, ROLL.r*1.05));
+        }
+      });
+    }
+    for (const k in pezzi) {
+      if (!pezzi[k].length) continue;
+      const geo = ['legno','scatola','nastro'].includes(k) ? box : k === 'ciuffo' ? cono : cilindro;
+      const m = new THREE.InstancedMesh(geo, c.mmats[k], pezzi[k].length);
+      pezzi[k].forEach((mx,i) => m.setMatrixAt(i, mx));
+      m.castShadow = m.receiveShadow = true; m.frustumCulled = false;
+      scene.add(m); c.mmeshes.push(m);
+    }
+    if (c.alfa !== undefined) visibilita(c, c.alfa);
+  }
+}
+
+/* --- dati --- */
+const occupato = p => !!String(p?.codice ?? '').trim();
+function statoDi(pal) { const n = pal.length, o = pal.filter(occupato).length; return o === 0 ? 'libero' : o === n ? 'pieno' : 'parziale'; }
+const NOMI = {libero:'Libera', parziale:'In parte occupata', pieno:'Piena'};
+
+/* --- stato --- */
+const S = {vista:'home', corsia:null, sez:null, hot:null, hotSez:null, anim:null, dati:{}, draft:null, dirty:false, armed:null, err:'',
+           catalogo:[], dModifica:null, dArmato:null, dBloccato:null};
+const chiave = s => String(s ?? '').trim().toLowerCase();
+/* Un codice si trova anche scritto con il tipo attaccato (es. COMVB0000066AR-ROLL). */
+const trovaProdotto = cod => {
+  const k = chiave(cod); if (!k) return undefined;
+  return S.catalogo.find(p => chiave(p.codice) === k) || S.catalogo.find(p => p.tipoUnita && `${chiave(p.codice)}-${p.tipoUnita.toLowerCase()}` === k);
+};
+/* Il tipo di unità appartiene al codice prodotto; il valore sul pallet resta solo come riserva per i dati vecchi. */
+const tipoDi = p => trovaProdotto(p?.codice)?.tipoUnita || (TIPI.includes(p?.tipoUnita) ? p.tipoUnita : 'BOX');
+const etichetta = pr => pr ? (pr.tipoUnita ? `${pr.codice}-${pr.tipoUnita}` : pr.codice) : '';
+const etichettaCodice = cod => etichetta(trovaProdotto(cod)) || cod;
+let db = null;
+function palletDi(id) { if (S.sez?.id === id && S.draft) return S.draft; return (S.dati[id]?.pallet) || []; }
+
+function aggiornaLuci() {
+  costruisciMerce();
+  luci.clear(); S.segmenti = [];
+  const c = S.corsia;
+  if (c) for (let k=1;k<=M.campate;k++) for (let l=1;l<=M.livelli;l++) {
+    const id = sezId(c,k,l), b = cella(c,k,l), pal = palletDi(id), ys = pianoDi(l);
+    const z0 = b.min.z + .12, z1 = b.max.z - .12;
+    let segs;
+    if (S.vista === 'sezione' && S.sez?.id === id && pal.length) {
+      const n = pal.length, g = .08, w = (z1 - z0 - g*(n-1))/n;
+      segs = pal.map((p,i) => {          /* il pallet 1 è quello più a sinistra visto dal corridoio */
+        const za = c.faccia > 0 ? z1 - i*(w+g) - w : z0 + i*(w+g);
+        return {za, zb:za+w, stato: occupato(p) ? 'pieno' : 'libero', i};
+      });
+    } else segs = [{za:z0, zb:z1, stato:statoDi(pal)}];
+    for (const s of segs) {
+      const mid = (s.za + s.zb)/2, len = s.zb - s.za;
+      const p = new THREE.Mesh(pianoGeo, LUCE[s.stato].piano);
+      p.rotation.x = -Math.PI/2; p.scale.set(M.profondita - .1, len, 1);
+      p.position.set((c.x0 + c.x1)/2, ys, mid); luci.add(p);
+      const f = new THREE.Mesh(pianoGeo, LUCE[s.stato].fronte);
+      f.rotation.y = c.faccia > 0 ? Math.PI/2 : -Math.PI/2; f.scale.set(len, .85, 1);
+      f.position.set(c.xf - c.faccia*(M.profondita - .04), ys + .425, mid); luci.add(f);   /* l'alone sta sul fondo: la merce resta davanti */
+      if (s.i !== undefined) S.segmenti.push({i:s.i, pos:new THREE.Vector3(c.xf + c.faccia*.06, ys + 1.0, mid)});
+    }
+  }
+  draw(); piazzaEtichette();
+}
+
+/* --- inquadrature --- */
+const FOTO = {w:1310, f:1200, yaw:-29.7*Math.PI/180, ancora:{px:725, dist:22.8}, altOcchio:4.5};
+const dir = new THREE.Vector3(Math.sin(FOTO.yaw), 0, -Math.cos(FOTO.yaw));
+const dest = new THREE.Vector3(Math.cos(FOTO.yaw), 0, Math.sin(FOTO.yaw));
+const P = new THREE.Vector3(CORSIE[CORSIE.length-1].x0, FOTO.altOcchio, 0);
+const offset = (FOTO.ancora.px - FOTO.w/2) / FOTO.f * FOTO.ancora.dist;
+const homePos = P.clone().sub(dir.clone().multiplyScalar(FOTO.ancora.dist)).sub(dest.clone().multiplyScalar(offset));
+const homeTarget = homePos.clone().add(dir.clone().multiplyScalar(20));
+const camera = new THREE.PerspectiveCamera(33, 1, .3, 200);
+
+camera.position.copy(homePos); camera.lookAt(homeTarget); camera.updateMatrixWorld();
+const inv = camera.matrixWorld.clone().invert();
+let uMin=1e9, uMax=-1e9, vMin=1e9, vMax=-1e9;
+for (const px of [-.1, X_FINE+.1]) for (const py of [0, M.altezza]) for (const pz of [.3, -L]) {
+  const k = new THREE.Vector3(px,py,pz).applyMatrix4(inv), u = k.x/-k.z, v = k.y/-k.z;
+  uMin=Math.min(uMin,u); uMax=Math.max(uMax,u); vMin=Math.min(vMin,v); vMax=Math.max(vMax,v);
+}
+const W = () => window.innerWidth, Hh = () => window.innerHeight;
+const largo = () => W() >= 760;
+
+function posaHome() {
+  const asp = W()/Hh(), t = Math.max((vMax-vMin)/2/.80, (uMax-uMin)/2/.92/asp);
+  return {pos:homePos.clone(), target:homeTarget.clone(), fov:2*Math.atan(t)*180/Math.PI, ox:(uMin+uMax)/2/(t*asp)/2, oy:-(vMin+vMax)/2/t/2};
+}
+function posaFronte(c) {
+  const asp = W()/Hh(), fov = 30, t = Math.tan(fov/2*Math.PI/180);
+  const D = Math.max((M.altezza/2+1.6)/t, (L/2+1.5)/(t*asp));
+  return {pos:new THREE.Vector3(c.xf + c.faccia*D, 3.6, -L/2), target:new THREE.Vector3(c.xf - c.faccia*M.profondita, 3.85, -L/2), fov, ox:0, oy:0};
+}
+/* La sezione si inquadra nello spazio lasciato libero dalla scheda. */
+function posaSezione(c, k, l) {
+  const w = W(), h = Hh(), asp = w/h, fov = 30, t = Math.tan(fov/2*Math.PI/180), top = 70;
+  let availW, availH, ox, oy;
+  if (largo()) { availW = w - 400; availH = h - top; ox = 200/w; oy = -top/2/h; }
+  else { availW = w; availH = h*.42 - top; ox = 0; oy = (h/2 - (top + availH/2))/h; }
+  const b = cella(c,k,l), cy = (b.min.y + b.max.y)/2, cz = (b.min.z + b.max.z)/2;
+  const halfH = (b.max.y - b.min.y)/2 + .55, halfW = M.campata/2 + .45;
+  const D = Math.max(halfH/(t*availH/h), halfW/(t*asp*availW/w));
+  return {pos:new THREE.Vector3(c.xf + c.faccia*D, cy + .2, cz), target:new THREE.Vector3(c.xf - c.faccia*M.profondita, cy + .2, cz), fov, ox, oy};
+}
+function posaBase() {
+  if (S.vista === 'sezione') return posaSezione(S.corsia, S.sez.k, S.sez.l);
+  if (S.vista === 'corsia') return posaFronte(S.corsia);
+  return posaHome();
+}
+/* Rotazione a 360°: la camera gira attorno a un perno verticale (centro del magazzino, della corsia o della sezione). */
+function perno() {
+  if (S.vista === 'sezione') return cella(S.corsia, S.sez.k, S.sez.l).getCenter(new THREE.Vector3());
+  if (S.vista === 'corsia') return new THREE.Vector3((S.corsia.x0 + S.corsia.x1)/2, 3.85, -L/2);
+  return new THREE.Vector3(X_FINE/2, 3.2, -L/2);
+}
+function ruota(p) {
+  if (!S.yaw) return p;
+  const pv = perno(), k = Math.min(1, Math.abs(S.yaw)/.35);
+  const q = new THREE.Quaternion().setFromAxisAngle(up, S.yaw);
+  const pos = p.pos.clone().sub(pv).applyQuaternion(q).add(pv);
+  const target = p.target.clone().lerp(pv, k).sub(pv).applyQuaternion(q).add(pv);
+  const sposta = S.vista === 'home' ? 1 - k : 1;      /* in home la centratura lascia il posto al perno */
+  return {...p, pos, target, ox:p.ox*sposta, oy:p.oy*sposta};
+}
+const posaAttuale = () => ruota(posaBase());
+function aggiornaRaddrizza() { $('raddrizza').hidden = !S.yaw || Math.abs(S.yaw) < .01; }
+function raddrizza() {
+  if (S.anim || !S.yaw) return;
+  const y0 = S.yaw, t0 = performance.now();
+  S.anim = true; piazzaEtichette();
+  const passo = now => {
+    const t = Math.min(1, (now - t0)/700);
+    S.yaw = y0*(1 - ease(t)); applica(posaAttuale()); draw();
+    if (t < 1) requestAnimationFrame(passo);
+    else { S.anim = null; S.yaw = 0; aggiornaRaddrizza(); piazzaEtichette(); }
+  };
+  requestAnimationFrame(passo);
+}
+function applica(p) {
+  const w = W(), h = Hh();
+  camera.position.copy(p.pos); camera.lookAt(p.target);
+  camera.fov = p.fov; camera.aspect = w/h;
+  camera.setViewOffset(w, h, p.ox*w, p.oy*h, w, h);
+  camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+}
+const mix = (a,b,t) => ({pos:a.pos.clone().lerp(b.pos,t), target:a.target.clone().lerp(b.target,t), fov:a.fov+(b.fov-a.fov)*t, ox:a.ox+(b.ox-a.ox)*t, oy:a.oy+(b.oy-a.oy)*t});
+const ease = t => t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2;
+const draw = () => renderer.render(scene, camera);
+
+function visibilita(c, a) {
+  c.alfa = a;
+  for (const m of [...c.mats, ...Object.values(c.mmats || {})]) { m.transparent = a < 1; m.opacity = a; m.depthWrite = a > .5; }
+  for (const m of [...c.meshes, ...(c.mmeshes || [])]) { m.visible = a > 0.001; m.castShadow = a > .5; }
+}
+function evidenzia(c) {
+  if (S.hot === c) return;
+  if (S.hot) S.hot.cornice.visible = false;
+  S.hot = c;
+  if (c) c.cornice.visible = true;
+  canvas.classList.toggle('hot', !!c);
+  document.querySelectorAll('.tag').forEach(b => b.classList.toggle('hot', b.dataset.id === c?.id));
+  draw();
+}
+function evidenziaSez(s) {
+  const key = s ? `${s.k}-${s.l}` : null;
+  if (S.hotSez === key) return;
+  S.hotSez = key;
+  mostraCorniceSez(s ? S.corsia : null, s?.k, s?.l);
+  canvas.classList.toggle('hot', !!s);
+  draw();
+}
+
+/* etichette */
+const labels = $('labels'), plabels = $('plabels');
+for (const c of CORSIE) {
+  const b = document.createElement('button');
+  b.className = 'tag'; b.type = 'button'; b.textContent = c.id; b.dataset.id = c.id;
+  b.setAttribute('aria-label', `Apri la corsia ${c.id}`);
+  b.addEventListener('click', () => apriCorsia(c));
+  b.addEventListener('mouseenter', () => evidenzia(c));
+  b.addEventListener('mouseleave', () => evidenzia(null));
+  labels.appendChild(b); c.tag = b;
+}
+function proietta(v) { const p = v.clone().project(camera); return [(p.x+1)/2*W(), (1-p.y)/2*Hh()]; }
+function piazzaEtichette() {
+  labels.hidden = S.vista !== 'home' || !!S.anim;
+  if (!labels.hidden) for (const c of CORSIE) {
+    const [x,y] = proietta(new THREE.Vector3((c.x0+c.x1)/2, M.altezza + .25, 0));
+    c.tag.style.left = `${x}px`; c.tag.style.top = `${y}px`;
+  }
+  /* arcate (I, II, III, IV) sotto le campate e righe (1–4) a sinistra, nella vista frontale */
+  const assi = $('assi');
+  assi.hidden = S.vista !== 'corsia' || !!S.anim;
+  assi.innerHTML = '';
+  if (!assi.hidden) {
+    const c = S.corsia, x = c.xf + c.faccia*.2, zL = c.faccia > 0 ? .8 : -L - .8;
+    const metti = (testo, v, cls = 'asse') => { const [px,py] = proietta(v), el = document.createElement('span');
+      el.className = cls; el.textContent = testo; el.style.left = `${Math.max(32, Math.min(W() - 32, px))}px`; el.style.top = `${py}px`; assi.appendChild(el); };
+    const yTop = M.altezza + .5;
+    for (let k=1;k<=M.campate;k++) { const b = cella(c,k,1); metti(romano(k), new THREE.Vector3(x, yTop, (b.min.z+b.max.z)/2)); }
+    for (let l=1;l<=M.livelli;l++) metti(String(l), new THREE.Vector3(x, (QUOTE[l-1] + Math.min(QUOTE[l], QUOTE[l-1] + 2.1))/2, zL));
+    metti('Arcata', new THREE.Vector3(x, yTop, zL), 'asse titolo');
+    metti('Riga', new THREE.Vector3(x, -.4, zL), 'asse titolo');
+  }
+  plabels.hidden = S.vista !== 'sezione' || !!S.anim;
+  plabels.innerHTML = '';
+  if (!plabels.hidden) for (const s of S.segmenti || []) {
+    const [x,y] = proietta(s.pos), b = document.createElement('button');
+    b.className = s.i === S.trovato ? 'ptag trovato' : 'ptag'; b.type = 'button'; b.textContent = s.i + 1;
+    b.setAttribute('aria-label', `Vai al pallet ${s.i+1}`);
+    b.style.left = `${x}px`; b.style.top = `${y}px`;
+    b.addEventListener('click', () => { const el = $(`pal-${s.i}`); el?.scrollIntoView({behavior:'smooth', block:'nearest'}); el?.querySelector('input')?.focus({preventScroll:true}); });
+    plabels.appendChild(b);
+  }
+}
+
+/* --- animazioni di camera --- */
+function vola(da, a, durata, ogniPasso, fine) {
+  return new Promise(risolvi => {
+    const t0 = performance.now(), ridotto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    S.anim = true; S.yaw = 0; aggiornaRaddrizza(); piazzaEtichette();
+    const passo = now => {
+      const t = ridotto ? 1 : Math.min(1, (now - t0)/durata), e = ease(t);
+      applica(mix(da, a(), e)); ogniPasso(e); draw();
+      if (t < 1) requestAnimationFrame(passo); else { S.anim = null; fine(); piazzaEtichette(); risolvi(); }
+    };
+    requestAnimationFrame(passo);
+  });
+}
+const fatto = Promise.resolve();
+function barra() {
+  $('bar').hidden = S.vista === 'home';
+  document.body.classList.toggle('non-home', S.vista !== 'home');
+  $('titolo').textContent = S.vista === 'sezione' ? `Corsia ${S.corsia.id} · sezione ${codiceSez(S.sez.id)}` : S.corsia ? `Corsia ${S.corsia.id}` : '';
+}
+function apriCorsia(c, {focus = true} = {}) {
+  if (S.vista !== 'home' || S.anim) return fatto;
+  evidenzia(null);
+  const da = posaAttuale(), altre = CORSIE.filter(x => x !== c);
+  S.corsia = c; aggiornaLuci(); luciAlpha(0);
+  return vola(da, () => posaFronte(c), 1400,
+    e => { altre.forEach(x => visibilita(x, 1 - Math.min(1, e*1.6))); luciAlpha(Math.max(0,(e-.6)/.4)); },
+    () => { S.vista = 'corsia'; barra(); if (focus) $('back').focus(); });
+}
+function chiudiCorsia({focus = true} = {}) {
+  if (S.vista !== 'corsia' || S.anim) return fatto;
+  const c = S.corsia, da = posaAttuale(), altre = CORSIE.filter(x => x !== c);
+  evidenziaSez(null); corniceTrovato.clear();
+  S.vista = 'home'; barra();
+  return vola(da, posaHome, 1200,
+    e => { altre.forEach(x => visibilita(x, Math.max(0, (e - .35)/.65))); luciAlpha(1 - Math.min(1, e*2.5)); },
+    () => { altre.forEach(x => visibilita(x, 1)); S.corsia = null; aggiornaLuci(); if (focus) c.tag.focus(); });
+}
+function preparaSezione(c, k, l) {
+  const id = sezId(c,k,l);
+  corniceTrovato.clear();
+  S.sez = {id, k, l}; S.draft = daDoc(S.dati[id]); S.dirty = false; S.armed = null; S.err = ''; S.trovato = null;
+  $('salva').textContent = '';
+  $('panel').hidden = false; document.body.classList.add('con-scheda'); scheda();
+}
+function apriSezione(k, l) {
+  if (S.vista !== 'corsia' || S.anim) return fatto;
+  evidenziaSez(null);
+  const c = S.corsia, da = posaAttuale();
+  preparaSezione(c, k, l);
+  return vola(da, () => posaSezione(c,k,l), 1100, () => {}, () => { S.vista = 'sezione'; barra(); aggiornaLuci(); });
+}
+/* Dalla home direttamente a una sezione, in un unico volo (usato dalla ricerca). */
+function volaASezione(c, k, l) {
+  if (S.vista !== 'home' || S.anim) return fatto;
+  evidenzia(null);
+  const da = posaAttuale(), altre = CORSIE.filter(x => x !== c);
+  S.corsia = c; aggiornaLuci(); luciAlpha(0);
+  preparaSezione(c, k, l);
+  return vola(da, () => posaSezione(c,k,l), 1700,
+    e => { altre.forEach(x => visibilita(x, 1 - Math.min(1, e*1.6))); luciAlpha(Math.max(0,(e-.55)/.45)); },
+    () => { S.vista = 'sezione'; barra(); aggiornaLuci(); });
+}
+function chiudiSezione({focus = true} = {}) {
+  if (S.vista !== 'sezione' || S.anim) return fatto;
+  salva();
+  const da = posaAttuale();
+  $('panel').hidden = true; document.body.classList.remove('con-scheda');
+  S.vista = 'corsia'; S.sez = null; S.draft = null; barra(); aggiornaLuci();
+  return vola(da, () => posaFronte(S.corsia), 1000, () => {}, () => { if (focus) $('back').focus(); });
+}
+function indietro() { if (S.vista === 'sezione') chiudiSezione(); else chiudiCorsia(); }
+
+/* --- ricerca per codice prodotto --- */
+function cercaPallet(testo) {
+  const q = testo.trim().toLowerCase();
+  if (!q) return [];
+  const ids = new Set(Object.keys(S.dati)); if (S.sez) ids.add(S.sez.id);
+  const out = [];
+  for (const id of ids) {
+    const [cid, k, l] = id.split('-');
+    if (!CORSIE.some(c => c.id === cid)) continue;
+    palletDi(id).forEach((p, i) => {
+      const cod = String(p.codice ?? '').trim();
+      if (!cod) return;
+      if (modoRicerca() === 'lotto') {
+        for (const x of p.lotti || []) {
+          const lt = chiave(x.lotto);
+          if (lt && lt.includes(q)) out.push({id, corsia:cid, k:+k, l:+l, i, p, lotto:x, esatto: lt === q});
+        }
+      } else {
+        const desc = chiave(trovaProdotto(cod)?.descrizione), et = chiave(etichettaCodice(cod));
+        if (et.includes(q) || desc.includes(q)) out.push({id, corsia:cid, k:+k, l:+l, i, p, esatto: cod.toLowerCase() === q});
+      }
+    });
+  }
+  return out.sort((a,b) => (b.esatto - a.esatto) || a.id.localeCompare(b.id, 'it', {numeric:true}) || a.i - b.i);
+}
+let trovati = [], attivo = -1, inViaggio = false;
+const qIn = $('q'), lista = $('risultati');
+const modoRicerca = () => $('modo').value;
+$('modo').addEventListener('change', () => {
+  qIn.setAttribute('aria-label', modoRicerca() === 'lotto' ? 'Cerca per lotto' : 'Cerca per codice articolo');
+  qIn.focus(); if (qIn.value.trim()) mostraRisultati();
+});
+function mostraRisultati() {
+  trovati = cercaPallet(qIn.value);
+  attivo = trovati.length ? 0 : -1;
+  if (!qIn.value.trim()) { lista.hidden = true; qIn.setAttribute('aria-expanded','false'); return; }
+  lista.innerHTML = trovati.length ? trovati.slice(0, 50).map((r, n) => {
+    const lotti = (r.p.lotti || []).map(x => String(x.lotto ?? '').trim()).filter(Boolean);
+    const tipo = tipoDi(r.p);
+    const unita = r.p.unitaProdotto === '' || r.p.unitaProdotto == null ? '' : `${r.p.unitaProdotto} ${tipo}`;
+    const desc = trovaProdotto(r.p.codice)?.descrizione || '';
+    let titolo, info;
+    if (r.lotto) {
+      titolo = `Lotto ${r.lotto.lotto}`;
+      info = [etichettaCodice(r.p.codice), desc, r.lotto.unita === '' || r.lotto.unita == null ? '' : `${r.lotto.unita} ${tipo} nel lotto`].filter(Boolean).join(' · ');
+    } else {
+      titolo = etichettaCodice(r.p.codice);
+      info = [desc, unita, lotti.length ? `lotti ${lotti.join(', ')}` : ''].filter(Boolean).join(' · ');
+    }
+    return `<li role="option" id="ris-${n}" data-n="${n}" aria-selected="${n === attivo}">
+      <b>${esc(titolo)}</b><span class="dove">${esc(codiceSez(r.id))} · pallet ${r.i+1}</span>
+      ${info ? `<small>${esc(info)}</small>` : ''}</li>`;
+  }).join('') : `<li class="vuoto" role="option" aria-disabled="true">${modoRicerca() === 'lotto' ? 'Nessun pallet con questo lotto.' : 'Nessun pallet con questo codice articolo.'}</li>`;
+  lista.hidden = false; qIn.setAttribute('aria-expanded','true');
+  qIn.setAttribute('aria-activedescendant', attivo >= 0 ? 'ris-0' : '');
+}
+function segna(n) {
+  attivo = n;
+  lista.querySelectorAll('li[role="option"][data-n]').forEach(li => li.setAttribute('aria-selected', String(+li.dataset.n === n)));
+  qIn.setAttribute('aria-activedescendant', n >= 0 ? `ris-${n}` : '');
+  $(`ris-${n}`)?.scrollIntoView({block:'nearest'});
+}
+function chiudiLista() { lista.hidden = true; qIn.setAttribute('aria-expanded','false'); }
+/* Ricerca: porta alla vista frontale della corsia e incornicia di blu il pallet.
+   Con {apri:true} (usato dal menù Prodotti) apre invece la scheda della sezione. */
+async function vaiAlPallet(r, {apri = false} = {}) {
+  if (inViaggio) return;
+  inViaggio = true; chiudiLista(); qIn.blur();
+  try {
+    const c = CORSIE.find(x => x.id === r.corsia);
+    corniceTrovato.clear();
+    if (S.vista === 'sezione' && !(apri && S.sez.id === r.id)) await chiudiSezione({focus:false});
+    if (S.vista === 'corsia' && S.corsia !== c) await chiudiCorsia({focus:false});
+    if (apri) {
+      if (S.vista === 'home') await volaASezione(c, r.k, r.l);
+      else if (S.vista === 'corsia') await apriSezione(r.k, r.l);
+      evidenziaPallet(r.i);
+    } else {
+      if (S.vista === 'home') await apriCorsia(c, {focus:false});
+      mostraCorniceTrovato(c, r.k, r.l, r.i);
+    }
+  } finally { inViaggio = false; }
+}
+/* cornice blu attorno a un singolo pallet, sulla vista frontale della corsia */
+const corniceTrovato = new THREE.Group(); scene.add(corniceTrovato);
+function mostraCorniceTrovato(c, k, l, i) {
+  corniceTrovato.clear();
+  const b = cella(c,k,l), n = Math.max(1, palletDi(sezId(c,k,l)).length);
+  const z0 = b.min.z + .12, z1 = b.max.z - .12, g = .08, w = (z1 - z0 - g*(n-1))/n;
+  const za = c.faccia > 0 ? z1 - i*(w+g) - w : z0 + i*(w+g), zb = za + w;
+  const t = .09, x = c.xf + c.faccia*.32, y0 = b.min.y + .05, y1 = b.max.y - .08;
+  for (const [cy,cz,sy,sz] of [[(y0+y1)/2,za,y1-y0+t,t],[(y0+y1)/2,zb,y1-y0+t,t],[y0,(za+zb)/2,t,zb-za+t],[y1,(za+zb)/2,t,zb-za+t]]) {
+    const m = new THREE.Mesh(box, CORNICE); m.position.set(x,cy,cz); m.scale.set(t,sy,sz); corniceTrovato.add(m);
+  }
+  draw();
+}
+function evidenziaPallet(i) {
+  document.querySelectorAll('.pal.trovato,.ptag.trovato').forEach(el => el.classList.remove('trovato'));
+  S.trovato = i;
+  const card = $(`pal-${i}`); if (!card) return;
+  void card.offsetWidth; card.classList.add('trovato');
+  card.scrollIntoView({behavior:'smooth', block:'start'});
+  plabels.querySelectorAll('.ptag')[i]?.classList.add('trovato');
+  card.querySelector('input')?.focus({preventScroll:true});
+}
+qIn.addEventListener('input', mostraRisultati);
+qIn.addEventListener('focus', () => { if (qIn.value.trim()) mostraRisultati(); });
+qIn.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' && trovati.length) { e.preventDefault(); segna(Math.min(trovati.length-1, attivo+1)); }
+  else if (e.key === 'ArrowUp' && trovati.length) { e.preventDefault(); segna(Math.max(0, attivo-1)); }
+  else if (e.key === 'Enter' && attivo >= 0) { e.preventDefault(); vaiAlPallet(trovati[attivo]); }
+  else if (e.key === 'Escape') { e.stopPropagation(); chiudiLista(); }
+});
+lista.addEventListener('mousedown', e => e.preventDefault());
+lista.addEventListener('click', e => { const li = e.target.closest('li[data-n]'); if (li) vaiAlPallet(trovati[+li.dataset.n]); });
+document.addEventListener('pointerdown', e => { if (!$('cerca').contains(e.target)) chiudiLista(); });
+
+/* --- menù Prodotti: elenco codici con descrizione --- */
+const drawer = $('drawer'), dLista = $('dLista');
+function dovePallet(cod) {                 /* tutti i pallet che usano quel codice */
+  const k = chiave(cod), out = [];
+  const ids = new Set(Object.keys(S.dati)); if (S.sez) ids.add(S.sez.id);
+  for (const id of ids) palletDi(id).forEach((p,i) => { if (chiave(p.codice) === k) { const [corsia,kk,l] = id.split('-'); out.push({id, corsia, k:+kk, l:+l, i, p}); } });
+  return out.sort((a,b) => a.id.localeCompare(b.id,'it',{numeric:true}) || a.i - b.i);
+}
+function apriDrawer() {
+  chiudiLista(); drawer.hidden = false; $('apriProdotti').setAttribute('aria-expanded','true');
+  disegnaDrawer(); $('nCodice').focus();
+}
+function chiudiDrawer() {
+  drawer.hidden = true; S.dModifica = S.dArmato = S.dBloccato = S.dSvuota = S.dEsito = null;
+  $('apriProdotti').setAttribute('aria-expanded','false'); $('apriProdotti').focus();
+}
+function aggiornaDatalist() {
+  $('catList').innerHTML = S.catalogo.map(p => `<option value="${esc(p.codice)}">${esc([p.tipoUnita, p.descrizione].filter(Boolean).join(' · '))}</option>`).join('');
+}
+function disegnaDrawer() {
+  if (drawer.hidden) return;
+  const f = chiave($('dFiltro').value);
+  const elenco = S.catalogo.filter(p => !f || chiave(p.codice).includes(f) || chiave(p.descrizione).includes(f));
+  $('dConta').textContent = `${S.catalogo.length} ${S.catalogo.length === 1 ? 'codice' : 'codici'}`;
+  if (!S.catalogo.length) { dLista.innerHTML = `<li class="hint">Nessun prodotto ancora. Aggiungi il primo con il modulo qui sopra.</li>`; return; }
+  if (!elenco.length) { dLista.innerHTML = `<li class="hint">Nessun prodotto corrisponde al filtro.</li>`; return; }
+  const sola = !db ? ' disabled' : '';
+  dLista.innerHTML = elenco.map(p => {
+    const dove = dovePallet(p.codice), n = dove.length;
+    const uso = `<span class="uso${n ? ' si' : ''}">${n ? `Su ${n} ${n === 1 ? 'pallet' : 'pallet'}` : 'Non usato'}</span>`;
+    const bloccaTipo = n && p.tipoUnita;
+    if (S.dModifica === p.id) return `<li data-id="${esc(p.id)}"><form class="fMod" data-id="${esc(p.id)}" novalidate>
+      <div class="tre2">
+        <label>Codice prodotto<input name="codice" maxlength="40" value="${esc(p.codice)}" autocomplete="off" spellcheck="false"${n ? ' disabled' : ''}></label>
+        <label>Tipo unità<select name="tipo"${bloccaTipo ? ' disabled' : ''}><option value="">Scegli…</option>${TIPI.map(t => `<option${t === p.tipoUnita ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+      </div>
+      ${n ? `<p class="hint">Il codice è su ${n} pallet: per cambiare codice${bloccaTipo ? ' o tipo' : ''}, prima svuotali. La descrizione si può cambiare.</p>` : ''}
+      <label>Descrizione<input name="descrizione" maxlength="120" value="${esc(p.descrizione)}" autocomplete="off"></label>
+      <p class="err" role="alert" hidden></p>
+      <div class="row"><button class="btn primary" type="submit">Salva</button><button class="btn" type="button" data-act="annulla">Annulla</button></div></form></li>`;
+    let extra = '';
+    if (S.dBloccato === p.id && n) extra = `<p class="err">Non posso eliminarlo: il codice è ancora su questi pallet. Liberali tutti con “Svuota i suoi pallet”, oppure aprili uno per uno:</p>
+      <div class="dove-lista">${dove.map((d,j) => `<button type="button" data-act="vai" data-id="${esc(p.id)}" data-j="${j}">${esc(codiceSez(d.id))} · pallet ${d.i+1}</button>`).join('')}</div>`;
+    else if (S.dSvuota === p.id && n) extra = `<p class="err">Toglie codice, unità e lotti da ${n} pallet: restano nelle loro sezioni come posti liberi. Non si annulla.</p>`;
+    else if (S.dArmato === p.id) extra = `<p class="err">L'eliminazione non si annulla.</p>`;
+    if (S.dEsito?.id === p.id) extra += `<p class="hint" role="status">${esc(S.dEsito.testo)}</p>`;
+    const tipoInfo = p.tipoUnita ? '' : ` <span class="pill tipo manca">tipo da scegliere</span>`;
+    return `<li data-id="${esc(p.id)}"><div class="prow"><b>${esc(etichetta(p))}${tipoInfo}</b>${uso}<small>${esc(p.descrizione) || 'Senza descrizione'}</small></div>${extra}
+      <div class="row"><button class="btn" type="button" data-act="modifica" data-id="${esc(p.id)}"${sola}>Modifica</button>
+      ${n ? `<button class="btn danger" type="button" data-act="svuotaTutti" data-id="${esc(p.id)}"${sola}>${S.dSvuota === p.id ? `Conferma: libera ${n} pallet` : 'Svuota i suoi pallet'}</button>` : ''}
+      <button class="btn danger" type="button" data-act="elimina" data-id="${esc(p.id)}"${sola}>${S.dArmato === p.id ? 'Conferma eliminazione' : 'Elimina'}</button></div></li>`;
+  }).join('');
+}
+/* Libera ogni pallet che contiene quel codice: via codice, unità e lotti; il posto resta nella sezione. */
+async function svuotaProdotto(cod) {
+  await salva();
+  const k = chiave(cod), ids = [...new Set(dovePallet(cod).map(d => d.id))];
+  let liberati = 0, falliti = 0;
+  for (const id of ids) {
+    if (S.sez?.id === id) {
+      S.draft = S.draft.map(p => chiave(p.codice) === k ? (liberati++, palletVuoto()) : p);
+      S.dirty = true; scheda(); aggiornaLuci(); await salva();
+      if (S.dirty) falliti++;
+      continue;
+    }
+    const doc = S.dati[id] || {}, prima = liberati;
+    const pallet = (doc.pallet || []).map(p => chiave(p.codice) === k ? (liberati++, {codice:'', tipoUnita:'BOX', unitaProdotto:null, lotti:[]}) : p);
+    try { const nuovo = {...doc, pallet, aggiornato:new Date().toISOString()}; await db.doc(`sezioni/${id}`).set(nuovo); S.dati[id] = nuovo; }
+    catch { falliti++; liberati = prima; }
+  }
+  if (S.corsia) aggiornaLuci();
+  return falliti ? `Liberati ${liberati} pallet, ma ${falliti} ${falliti === 1 ? 'sezione non è stata salvata' : 'sezioni non sono state salvate'}: controlla la connessione e riprova.`
+                 : `Liberati ${liberati} pallet. Ora puoi eliminare il codice, se vuoi.`;
+}
+const nuovoId = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+function controllaCodice(codice, id) {
+  if (!codice) return 'Scrivi il codice prodotto.';
+  if (S.catalogo.some(p => p.id !== id && chiave(p.codice) === chiave(codice))) return `Il codice ${codice} esiste già.`;
+  return '';
+}
+$('fNuovo').addEventListener('submit', async e => {
+  e.preventDefault();
+  const codice = $('nCodice').value.trim(), descrizione = $('nDesc').value.trim(), tipoUnita = $('nTipo').value, err = $('nErr');
+  const problema = !db ? 'I dati non sono raggiungibili da questa vista.' : controllaCodice(codice) || (!tipoUnita ? 'Scegli il tipo di unità: BOX o ROLL.' : '');
+  if (problema) { err.textContent = problema; err.hidden = false; (codice ? $('nTipo') : $('nCodice')).focus(); return; }
+  err.hidden = true;
+  try {
+    await db.collection('catalogo').doc(nuovoId()).set({codice, tipoUnita, descrizione, creato:new Date().toISOString()});
+    $('nCodice').value = ''; $('nDesc').value = ''; $('nTipo').value = ''; $('nCodice').focus();
+  } catch { err.textContent = 'Salvataggio non riuscito. Controlla la connessione e riprova.'; err.hidden = false; }
+});
+dLista.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, p = S.catalogo.find(x => x.id === f.dataset.id); if (!p) return;
+  const usato = dovePallet(p.codice).length > 0;
+  const codice = usato ? p.codice : f.codice.value.trim(), descrizione = f.descrizione.value.trim();
+  const tipoUnita = usato && p.tipoUnita ? p.tipoUnita : f.tipo.value;
+  const err = f.querySelector('.err'), problema = controllaCodice(codice, p.id) || (!tipoUnita ? 'Scegli il tipo di unità: BOX o ROLL.' : '');
+  if (problema) { err.textContent = problema; err.hidden = false; return; }
+  try { await db.collection('catalogo').doc(p.id).set({codice, tipoUnita, descrizione, creato:p.creato || null, aggiornato:new Date().toISOString()}); S.dModifica = null; disegnaDrawer(); }
+  catch { err.textContent = 'Salvataggio non riuscito. Controlla la connessione e riprova.'; err.hidden = false; }
+});
+dLista.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const p = S.catalogo.find(x => x.id === (b.dataset.id || b.closest('[data-id]')?.dataset.id));
+  const act = b.dataset.act;
+  if (act === 'annulla') { S.dModifica = null; return disegnaDrawer(); }
+  if (!p) return;
+  if (act !== 'svuotaTutti') S.dSvuota = null;
+  if (act === 'modifica') { S.dModifica = p.id; S.dArmato = S.dBloccato = null; disegnaDrawer(); dLista.querySelector('.fMod input:not([disabled])')?.focus(); }
+  else if (act === 'svuotaTutti') {
+    S.dModifica = S.dArmato = S.dBloccato = null;
+    if (S.dSvuota !== p.id) { S.dSvuota = p.id; S.dEsito = null; return disegnaDrawer(); }
+    S.dSvuota = null;
+    b.disabled = true; b.textContent = 'Svuoto…';
+    const testo = await svuotaProdotto(p.codice);
+    S.dEsito = {id:p.id, testo}; disegnaDrawer();
+    dLista.querySelector(`li[data-id="${CSS.escape(p.id)}"] [data-act="elimina"]`)?.focus();
+  }
+  else if (act === 'elimina') {
+    S.dModifica = null;
+    if (dovePallet(p.codice).length) { S.dBloccato = p.id; S.dArmato = null; return disegnaDrawer(); }
+    if (S.dArmato !== p.id) { S.dArmato = p.id; S.dBloccato = null; return disegnaDrawer(); }
+    S.dArmato = null;
+    try { await db.collection('catalogo').doc(p.id).delete(); }
+    catch { S.dArmato = null; disegnaDrawer(); }
+  } else if (act === 'vai') {
+    const d = dovePallet(p.codice)[+b.dataset.j]; if (!d) return;
+    drawer.hidden = true; $('apriProdotti').setAttribute('aria-expanded','false'); S.dBloccato = null;
+    vaiAlPallet(d, {apri:true});
+  }
+});
+$('dFiltro').addEventListener('input', disegnaDrawer);
+$('apriProdotti').addEventListener('click', () => drawer.hidden ? apriDrawer() : chiudiDrawer());
+$('chiudiProdotti').addEventListener('click', chiudiDrawer);
+drawer.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); chiudiDrawer(); } });
+
+/* --- scheda della sezione --- */
+const palletVuoto = () => ({codice:'', tipoUnita:'BOX', unitaProdotto:'', lotti:[]});
+function daDoc(d) {
+  return (d?.pallet || []).map(p => ({
+    codice: p.codice ?? '', tipoUnita: TIPI.includes(p.tipoUnita) ? p.tipoUnita : 'BOX', unitaProdotto: p.unitaProdotto ?? '',
+    lotti: (p.lotti || []).map(x => ({lotto:x.lotto ?? '', unita:x.unita ?? ''})),
+  }));
+}
+const num = v => v === '' || v == null ? null : Math.max(0, Math.floor(Number(v)) || 0);
+function pulisci(pal) {
+  return pal.map(p => ({codice:String(p.codice).trim(), tipoUnita:tipoDi(p), unitaProdotto:num(p.unitaProdotto),
+    lotti:p.lotti.filter(x => String(x.lotto).trim() || x.unita !== '').map(x => ({lotto:String(x.lotto).trim(), unita:num(x.unita)}))}));
+}
+function aggiornaStato() {
+  const st = statoDi(S.draft);
+  const ps = $('pstato'); ps.className = `pill ${st}`;
+  ps.textContent = S.draft.length ? `${NOMI[st]} · ${S.draft.filter(occupato).length} di ${S.draft.length} occupati` : 'Numero di pallet da indicare';
+  S.draft.forEach((p,i) => {
+    const card = $(`pal-${i}`); if (!card) return;
+    card.className = `pal ${occupato(p) ? 'occ' : 'free'}`;
+    card.querySelector('.pill').className = `pill ${occupato(p) ? 'pieno' : 'libero'}`;
+    card.querySelector('.pill').textContent = occupato(p) ? 'Occupato' : 'Libero';
+  });
+}
+function scheda() {
+  const c = S.corsia, s = S.sez, sola = !db;
+  $('psub').textContent = `Corsia ${c.id} · campata ${romano(s.k)} · livello ${s.l}${s.l === 1 ? ' (a terra)' : ''}`;
+  $('ptitle').textContent = `Sezione ${codiceSez(s.id)}`;
+  const dis = sola ? ' disabled' : '';
+  let h = '';
+  if (sola) h += `<p class="err">I dati non sono raggiungibili da questa vista: la scheda è in sola lettura.</p>`;
+  h += `<div class="npal"><span>Numero di pallet</span><div class="step">
+      <button type="button" data-act="meno" aria-label="Un pallet in meno"${dis}>−</button><output id="npal">${S.draft.length}</output>
+      <button type="button" data-act="piu" aria-label="Un pallet in più"${dis}>+</button></div></div>`;
+  if (S.err) h += `<p class="err" role="alert">${esc(S.err)}</p>`;
+  if (!S.draft.length) h += `<p class="hint">Indica quanti pallet stanno in questa sezione. Per ognuno potrai inserire prodotto e lotti.</p>`;
+  S.draft.forEach((p,i) => {
+    const armed = S.armed === `svuota-${i}`;
+    h += `<section class="pal" id="pal-${i}"><h3>Pallet ${i+1}<span class="pill"></span></h3>
+      <div class="two">
+        <label>Codice prodotto<input id="f-${i}-codice" data-p="${i}" data-f="codice" value="${esc(p.codice)}" list="catList" autocomplete="off" spellcheck="false" placeholder="Scegli…"${dis}></label>
+        <label><span id="ul-${i}">${p.codice ? `Unità ${tipoDi(p)}` : 'Unità per prodotto'}</span><input id="f-${i}-unita" data-p="${i}" data-f="unitaProdotto" type="number" min="0" inputmode="numeric" value="${esc(p.unitaProdotto)}"${dis}></label>
+      </div>
+      <p class="desc" id="d-${i}">${esc(descrizioneDi(p.codice))}</p>
+      <p class="err" id="ce-${i}" role="alert"${!p.codice || trovaProdotto(p.codice) ? ' hidden' : ''}>${p.codice && !trovaProdotto(p.codice) ? 'Questo codice non è nell\'elenco prodotti: aggiungilo dal menù Prodotti o scegline un altro.' : ''}</p>
+      <div class="lotti"><h4>Lotti</h4>
+        ${p.lotti.map((x,j) => `<div class="lotto">
+          <label>Lotto<input id="f-${i}-l${j}-lotto" data-p="${i}" data-l="${j}" data-f="lotto" value="${esc(x.lotto)}" autocomplete="off"${dis}></label>
+          <label>Unità per lotto<input id="f-${i}-l${j}-unita" data-p="${i}" data-l="${j}" data-f="unita" type="number" min="0" inputmode="numeric" value="${esc(x.unita)}"${dis}></label>
+          <button type="button" class="btn" data-act="toglilotto" data-p="${i}" data-l="${j}" aria-label="Togli il lotto ${j+1} del pallet ${i+1}"${dis}>Togli</button></div>`).join('')}
+        <div class="row"><button type="button" class="btn" data-act="lotto" data-p="${i}"${dis}>+ Aggiungi lotto</button>
+        ${occupato(p) || p.lotti.length || p.unitaProdotto !== '' ? `<button type="button" class="btn danger" data-act="svuota" data-p="${i}"${dis}>${armed ? 'Conferma: svuota pallet' : 'Svuota pallet'}</button>` : ''}</div>
+      </div></section>`;
+  });
+  $('pbody').innerHTML = h;
+  aggiornaStato();
+}
+let saveT = null, chain = Promise.resolve();
+function salvaPresto() { S.dirty = true; $('salva').textContent = 'Modifiche da salvare…'; clearTimeout(saveT); saveT = setTimeout(salva, 600); aggiornaStato(); aggiornaLuci(); }
+function salva() {
+  clearTimeout(saveT); saveT = null;
+  if (!S.dirty || !S.sez || !db) return chain;
+  const id = S.sez.id, data = {pallet:pulisci(S.draft), aggiornato:new Date().toISOString()};
+  S.dirty = false;
+  chain = chain.then(async () => {
+    $('salva').textContent = 'Salvataggio…';
+    try { await db.doc(`sezioni/${id}`).set(data); S.dati[id] = data; if (S.sez?.id === id && !S.dirty) $('salva').textContent = 'Salvato'; }
+    catch { if (S.sez?.id === id) { S.dirty = true; $('salva').textContent = 'Salvataggio non riuscito. Controlla la connessione: riprovo alla prossima modifica.'; } }
+  });
+  return chain;
+}
+const pannello = $('panel');
+function descrizioneDi(cod) { const pr = trovaProdotto(cod); return pr ? [etichetta(pr), pr.descrizione].filter(Boolean).join(' · ') : ''; }
+function segnaCodice(i, testo) {
+  const e = $(`ce-${i}`); if (e) { e.textContent = testo; e.hidden = !testo; }
+  const d = $(`d-${i}`); if (d) d.textContent = descrizioneDi(S.draft[i]?.codice);
+  const u = $(`ul-${i}`); if (u) u.textContent = S.draft[i]?.codice ? `Unità ${tipoDi(S.draft[i])}` : 'Unità per prodotto';
+}
+/* Il codice di un pallet si accetta solo se è nell'elenco prodotti. */
+function leggiCodice(el, i, uscita) {
+  const v = el.value.trim(), m = trovaProdotto(v);
+  if (!v) { if (S.draft[i].codice) { S.draft[i].codice = ''; salvaPresto(); } segnaCodice(i, ''); return; }
+  if (m) {
+    if (S.draft[i].codice !== m.codice) { S.draft[i].codice = m.codice; salvaPresto(); }
+    if (uscita) el.value = m.codice;
+    segnaCodice(i, ''); return;
+  }
+  if (uscita) { el.value = S.draft[i].codice; segnaCodice(i, `“${v}” non è nell'elenco prodotti: ho rimesso il codice di prima. Aggiungilo dal menù Prodotti se è nuovo.`); }
+  else segnaCodice(i, 'Codice non presente nell\'elenco prodotti: scegline uno dai suggerimenti.');
+}
+pannello.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.f === 'codice' && S.draft?.[+el.dataset.p]) leggiCodice(el, +el.dataset.p, true);
+});
+pannello.addEventListener('input', e => {
+  const el = e.target, i = +el.dataset.p, f = el.dataset.f;
+  if (!f || !S.draft?.[i]) return;
+  if (f === 'codice') { S.armed = null; leggiCodice(el, i, false); return; }
+  if (el.dataset.l !== undefined) S.draft[i].lotti[+el.dataset.l][f] = el.value;
+  else S.draft[i][f] = el.value;
+  S.armed = null;
+  salvaPresto();
+});
+pannello.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b || !S.draft) return;
+  const i = +b.dataset.p, act = b.dataset.act;
+  S.err = '';
+  if (act === 'piu') {
+    if (S.draft.length >= M.maxPallet) { S.err = `Al massimo ${M.maxPallet} pallet per sezione.`; return scheda(); }
+    S.draft.push(palletVuoto());
+  } else if (act === 'meno') {
+    const last = S.draft[S.draft.length-1];
+    if (!last) return;
+    if (occupato(last) || last.lotti.length || last.unitaProdotto !== '') { S.err = `Il pallet ${S.draft.length} contiene dati: svuotalo prima di togliere un pallet.`; return scheda(); }
+    S.draft.pop();
+  } else if (act === 'lotto') S.draft[i].lotti.push({lotto:'', unita:''});
+  else if (act === 'toglilotto') S.draft[i].lotti.splice(+b.dataset.l, 1);
+  else if (act === 'svuota') {
+    if (S.armed !== `svuota-${i}`) { S.armed = `svuota-${i}`; return scheda(); }
+    S.draft[i] = palletVuoto();
+  }
+  S.armed = null;
+  scheda(); salvaPresto();
+  const focus = act === 'lotto' ? $(`f-${i}-l${S.draft[i].lotti.length-1}-lotto`) : null;
+  focus?.focus();
+});
+
+/* --- tocco e mouse sulla scena --- */
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), hit = new THREE.Vector3();
+function raggio(ev) { ndc.set(ev.clientX/W()*2-1, -(ev.clientY/Hh())*2+1); ray.setFromCamera(ndc, camera); return ray.ray; }
+function corsiaSotto(ev) {
+  if (S.vista !== 'home' || S.anim) return null;
+  const r = raggio(ev); let best = null, dist = Infinity;
+  for (const c of CORSIE) if (r.intersectBox(c.zona, hit)) { const d = hit.distanceTo(r.origin); if (d < dist) { dist = d; best = c; } }
+  return best;
+}
+function sezioneSotto(ev) {
+  if (S.vista !== 'corsia' || S.anim) return null;
+  const r = raggio(ev), c = S.corsia;
+  for (let k=1;k<=M.campate;k++) for (let l=1;l<=M.livelli;l++) if (r.intersectBox(cella(c,k,l), hit)) return {k,l};
+  return null;
+}
+/* trascinare (mouse o dito) fa ruotare la vista; un tocco senza trascinare resta un click */
+let trascina = null, trascinato = false;
+canvas.addEventListener('pointerdown', ev => {
+  if (S.anim || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+  trascina = {id:ev.pointerId, x:ev.clientX, yaw:S.yaw || 0}; trascinato = false;
+});
+window.addEventListener('pointermove', ev => {
+  if (!trascina || ev.pointerId !== trascina.id || S.anim) return;
+  const dx = ev.clientX - trascina.x;
+  if (!trascinato) {
+    if (Math.abs(dx) < 6) return;
+    trascinato = true; canvas.classList.add('ruota'); evidenzia(null); evidenziaSez(null);
+    try { canvas.setPointerCapture(ev.pointerId); } catch {}
+  }
+  let y = trascina.yaw - dx*.008;
+  y = Math.atan2(Math.sin(y), Math.cos(y));
+  S.yaw = y; applica(posaAttuale()); draw(); piazzaEtichette(); aggiornaRaddrizza();
+});
+const fineTrascina = ev => { if (trascina && ev.pointerId === trascina.id) { trascina = null; canvas.classList.remove('ruota'); } };
+window.addEventListener('pointerup', fineTrascina);
+window.addEventListener('pointercancel', fineTrascina);
+$('raddrizza').addEventListener('click', raddrizza);
+canvas.addEventListener('pointermove', ev => {
+  if (ev.pointerType !== 'mouse' || trascina) return;
+  if (S.vista === 'home') evidenzia(corsiaSotto(ev)); else evidenziaSez(sezioneSotto(ev));
+});
+canvas.addEventListener('pointerleave', () => { evidenzia(null); evidenziaSez(null); });
+canvas.addEventListener('click', ev => {
+  if (trascinato) { trascinato = false; return; }
+  if (S.vista === 'home') { const c = corsiaSotto(ev); if (c) apriCorsia(c); }
+  else if (S.vista === 'corsia') { const s = sezioneSotto(ev); if (s) apriSezione(s.k, s.l); }
+});
+$('back').addEventListener('click', indietro);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !ev.target.closest?.('input')) indietro(); });
+window.addEventListener('pagehide', () => { salva(); });
+
+function fit() {
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(W(), Hh(), false);
+  if (!S.anim) { applica(posaAttuale()); draw(); piazzaEtichette(); }
+}
+window.addEventListener('resize', fit);
+fit();
+
+/* --- archivio sul dispositivo (IndexedDB): funziona senza internet ---
+   Ogni documento (sezioni/A-2-3, catalogo/<id>) è salvato con l'ora della modifica e il dispositivo che l'ha fatta.
+   Le eliminazioni restano come "cancellato", così si trasferiscono quando si importa il file su un altro dispositivo.
+   Importando, per ogni documento vince la modifica più recente. */
+const archivio = {
+  idb: null, cache: new Map(), ascolti: new Map(), dispositivo: '',
+  async avvia() {
+    this.idb = await new Promise((ok, ko) => {
+      const r = indexedDB.open('magmanager', 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore('doc', {keyPath:'p'}); r.result.createObjectStore('meta'); };
+      r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); r.onblocked = () => ko(new Error('bloccato'));
+    });
+    (await this._req('doc', 'readonly', s => s.getAll())).forEach(r => this.cache.set(r.p, r));
+    this.dispositivo = await this.meta('dispositivo') || await this.meta('dispositivo', 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2,6));
+    try { navigator.storage?.persist?.().catch(() => {}); } catch {}   /* chiede di non cancellare i dati; senza attendere la risposta */
+  },
+  _req(store, modo, fn) {
+    return new Promise((ok, ko) => { const t = this.idb.transaction(store, modo), q = fn(t.objectStore(store));
+      t.oncomplete = () => ok(q && 'result' in q ? q.result : undefined); t.onerror = t.onabort = () => ko(t.error); });
+  },
+  async meta(k, v) { if (v === undefined) return this._req('meta', 'readonly', s => s.get(k)); await this._req('meta', 'readwrite', s => s.put(v, k)); return v; },
+  async _scrivi(recs) {
+    await this._req('doc', 'readwrite', s => { recs.forEach(r => s.put(r)); });
+    recs.forEach(r => this.cache.set(r.p, r));
+    new Set(recs.map(r => r.p.split('/')[0])).forEach(c => this._avvisa(c));
+  },
+  snap(c) {
+    const m = {fromCache:false, hasPendingWrites:false};
+    const docs = [...this.cache.values()].filter(r => !r.del && r.p.split('/')[0] === c)
+      .map(r => ({id:r.p.split('/')[1], exists:true, data:() => r.d, metadata:m}));
+    return {docs, metadata:m};
+  },
+  _avvisa(c) { const s = this.snap(c); (this.ascolti.get(c) || []).forEach(f => f(s)); },
+  ascolta(c, fn) { if (!this.ascolti.has(c)) this.ascolti.set(c, new Set()); this.ascolti.get(c).add(fn); setTimeout(() => fn(this.snap(c))); return () => this.ascolti.get(c).delete(fn); },
+  set(p, d) { return this._scrivi([{p, d:JSON.parse(JSON.stringify(d)), t:Date.now(), dev:this.dispositivo, del:false}]); },
+  cancella(p) { return this._scrivi([{p, d:null, t:Date.now(), dev:this.dispositivo, del:true}]); },
+  esporta() { return {app:'MagManager', formato:1, esportato:new Date().toISOString(), dispositivo:this.dispositivo, doc:[...this.cache.values()]}; },
+  async importa(dati) {
+    if (dati?.app !== 'MagManager' || !Array.isArray(dati.doc)) throw new Error('formato');
+    const nuovi = [];
+    for (const r of dati.doc) {
+      if (!r || typeof r.p !== 'string' || !/^(sezioni|catalogo)\/[A-Za-z0-9_\-.~:@+]{1,200}$/.test(r.p)) continue;
+      const t = Number(r.t) || 0, dev = String(r.dev || ''), mio = this.cache.get(r.p);
+      if (!mio || t > mio.t || (t === mio.t && dev > mio.dev))
+        nuovi.push({p:r.p, d:r.del ? null : (r.d && typeof r.d === 'object' ? r.d : {}), t, dev, del:!!r.del});
+    }
+    if (nuovi.length) await this._scrivi(nuovi);
+    return nuovi.length;
+  },
+};
+/* stessa forma usata dal resto del programma */
+const archivioDb = {
+  doc: p => ({set: d => archivio.set(p, d), delete: () => archivio.cancella(p)}),
+  collection: c => ({doc: id => archivioDb.doc(`${c}/${id}`), onSnapshot: fn => archivio.ascolta(c, fn)}),
+};
+
+/* --- PIN all'apertura (resta solo su questo dispositivo) --- */
+async function impronta(pin, sale) {
+  const testo = `${sale}:${pin}`;
+  if (window.crypto?.subtle) {
+    const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(testo));
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  let h = 2166136261; for (const ch of testo) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return 'f' + (h >>> 0).toString(16);
+}
+const blocco = {
+  modo: 'sblocca', primo: '', errori: 0, attesaFino: 0, nascostoDa: 0,
+  async mostra(modo) {
+    this.modo = modo; this.primo = '';
+    const salvato = await archivio.meta('pin');
+    if (modo === 'sblocca' && !salvato) this.modo = 'crea';
+    $('pinTitolo').textContent = {crea:'Crea il tuo PIN', sblocca:'Inserisci il PIN', cambia:'Nuovo PIN'}[this.modo];
+    $('pinTesto').textContent = this.modo === 'sblocca' ? 'MagManager è bloccato.' : 'Da 4 a 8 cifre. Annotalo in un posto sicuro: senza PIN i dati di questo telefono non si possono aprire.';
+    $('pinAnnulla').hidden = this.modo !== 'cambia';
+    $('pinErr').textContent = ''; $('pin').value = '';
+    $('blocco').hidden = false; setTimeout(() => $('pin').focus(), 50);
+  },
+  async invia() {
+    const pin = $('pin').value.trim(), err = $('pinErr');
+    if (!/^\d{4,8}$/.test(pin)) { err.textContent = 'Il PIN è di 4–8 cifre.'; return; }
+    if (this.modo === 'sblocca') {
+      if (Date.now() < this.attesaFino) { err.textContent = `Troppi tentativi: riprova tra ${Math.ceil((this.attesaFino - Date.now())/1000)} secondi.`; return; }
+      const salvato = await archivio.meta('pin');
+      if (salvato && await impronta(pin, salvato.sale) === salvato.hash) { this.errori = 0; this.chiudi(); return; }
+      this.errori++; $('pin').value = '';
+      if (this.errori >= 5) { this.attesaFino = Date.now() + 30000; this.errori = 0; err.textContent = 'PIN errato per 5 volte: attendi 30 secondi.'; }
+      else err.textContent = 'PIN errato.';
+      return;
+    }
+    if (!this.primo) { this.primo = pin; $('pin').value = ''; $('pinTitolo').textContent = 'Ripeti il PIN'; err.textContent = ''; return; }
+    if (pin !== this.primo) { this.primo = ''; $('pin').value = ''; $('pinTitolo').textContent = this.modo === 'cambia' ? 'Nuovo PIN' : 'Crea il tuo PIN'; err.textContent = 'I due PIN non coincidono: ricomincia.'; return; }
+    const sale = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    await archivio.meta('pin', {sale, hash: await impronta(pin, sale)});
+    this.chiudi(); if (this.modo === 'cambia') datiEsito('PIN cambiato.');
+  },
+  chiudi() { $('blocco').hidden = true; $('pin').value = ''; },
+};
+$('pinForm').addEventListener('submit', e => { e.preventDefault(); blocco.invia(); });
+$('pinAnnulla').addEventListener('click', () => blocco.chiudi());
+/* si riblocca se l'app resta in secondo piano più di 3 minuti */
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) blocco.nascostoDa = Date.now();
+  else if (blocco.nascostoDa && Date.now() - blocco.nascostoDa > 180000 && $('blocco').hidden) { salva(); blocco.mostra('sblocca'); }
+});
+
+/* --- esporta / importa: backup e allineamento con l'altro dispositivo --- */
+function datiEsito(t) { $('datiEsito').textContent = t; }
+async function mostraUltimoBackup() {
+  const u = await archivio.meta('ultimoEsporto');
+  $('ultimoBackup').textContent = u ? `Ultima esportazione: ${new Date(u).toLocaleString('it-IT', {dateStyle:'medium', timeStyle:'short'})}` : 'Non hai ancora esportato i dati.';
+}
+/* Il file si prepara subito, senza attese: Safari apre la condivisione solo se parte direttamente dal tocco. */
+$('esporta').addEventListener('click', async () => {
+  const pacco = archivio.esporta();
+  if (S.sez && (S.dirty || saveT)) {      /* modifiche della scheda aperta non ancora salvate */
+    const p = `sezioni/${S.sez.id}`;
+    pacco.doc = pacco.doc.filter(r => r.p !== p).concat({p, d:{pallet:pulisci(S.draft), aggiornato:new Date().toISOString()}, t:Date.now(), dev:archivio.dispositivo, del:false});
+  }
+  salva();
+  const d = new Date(), z = n => String(n).padStart(2, '0');
+  const nome = `MagManager-${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}.json`;
+  const blob = new Blob([JSON.stringify(pacco)], {type:'application/json'});
+  const scarica = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); };
+  let file = null; try { file = new File([blob], nome, {type:'application/json'}); } catch {}
+  try {
+    if (file && navigator.canShare?.({files:[file]})) {
+      try { await navigator.share({files:[file], title:'MagManager – dati'}); }
+      catch (e) { if (e?.name === 'AbortError') return; scarica(); }
+    } else scarica();
+    await archivio.meta('ultimoEsporto', Date.now()); mostraUltimoBackup();
+    datiEsito(`File ${nome} pronto: salvalo su File o mandalo a te stesso.`);
+  } catch { datiEsito('Esportazione non riuscita. Riprova.'); }
+});
+$('importaFile').addEventListener('change', async e => {
+  const f = e.target.files?.[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    await salva();
+    const n = await archivio.importa(JSON.parse(await f.text()));
+    datiEsito(n ? `Importate ${n} modifiche da ${f.name}.` : `Nessuna novità in ${f.name}: i dati qui erano già aggiornati.`);
+  } catch { datiEsito('Questo file non è un\'esportazione di MagManager.'); }
+});
+$('cambiaPin').addEventListener('click', () => blocco.mostra('cambia'));
+$('bloccaOra').addEventListener('click', () => { salva(); chiudiDrawer(); blocco.mostra('sblocca'); });
+
+/* --- app installabile e senza rete --- */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* --- avvio --- */
+(async () => {
+  try { await archivio.avvia(); }
+  catch { msg('MagManager non riesce a salvare dati su questo dispositivo. In Safari disattiva la Navigazione privata e riapri l\'app.'); return; }
+  db = archivioDb;
+  await blocco.mostra('sblocca');
+  mostraUltimoBackup();
+  db.collection('catalogo').onSnapshot(snap => {
+    S.catalogo = snap.docs.map(d => ({id:d.id, codice:'', descrizione:'', ...d.data()}))
+      .sort((a,b) => a.codice.localeCompare(b.codice,'it',{numeric:true}));
+    aggiornaDatalist();
+    aggiornaLuci();                     /* il tipo di unità del codice decide rotoli o scatole */
+    if (!dLista.contains(document.activeElement)) disegnaDrawer();
+    if (S.sez && !pannello.contains(document.activeElement)) scheda();
+    if (!lista.hidden) mostraRisultati();
+  }, () => {});
+  db.collection('sezioni').onSnapshot(snap => {
+    const dati = {}; snap.docs.forEach(d => { dati[d.id] = d.data(); });
+    S.dati = dati;
+    if (S.sez && !S.dirty && !saveT && !pannello.contains(document.activeElement)) { S.draft = daDoc(dati[S.sez.id]); scheda(); }
+    aggiornaLuci();
+    if (!lista.hidden) mostraRisultati();
+    if (!dLista.contains(document.activeElement)) disegnaDrawer();
+  });
+})();
+
+window.__magazzino = {apriCorsia: id => apriCorsia(CORSIE.find(c => c.id === id)), apriSezione, indietro, S};
+})();
+</script>
+</body>
+</html>

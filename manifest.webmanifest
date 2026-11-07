@@ -1,0 +1,17 @@
+{
+  "name": "MagManager",
+  "short_name": "MagManager",
+  "description": "Gestione del magazzino: scaffalature, sezioni, pallet e prodotti. Funziona anche senza internet.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#d3d4d5",
+  "theme_color": "#1d232b",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
