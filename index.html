@@ -26,7 +26,8 @@ html,body{height:100%}
 [hidden]{display:none!important}
 *{box-sizing:border-box}
 body{background:linear-gradient(to bottom,var(--wall) 0%,#e0e1e2 44%,var(--floor) 58%,#f0f0f0 100%);color:var(--ink);overflow:hidden;font-family:var(--body)}
-button,input{font:inherit;color:inherit}
+button,input,select{font:inherit;color:inherit}
+select[data-f="codice"]{text-overflow:ellipsis;font-size:16px}
 #scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #scene.hot{cursor:pointer}
 #scene.ruota{cursor:grabbing}
@@ -213,7 +214,6 @@ label.btn{display:inline-flex;align-items:center;color:var(--ink);font-size:1rem
     </section>
   </div>
 </aside>
-<datalist id="catList"></datalist>
 <button id="raddrizza" type="button" hidden>↺ Raddrizza vista</button>
 <div id="marchio" aria-hidden="true">MagManager</div>
 <div id="blocco">
@@ -890,8 +890,23 @@ function chiudiDrawer() {
   drawer.hidden = true; S.dModifica = S.dArmato = S.dBloccato = S.dSvuota = S.dEsito = null;
   $('apriProdotti').setAttribute('aria-expanded','false'); $('apriProdotti').focus();
 }
-function aggiornaDatalist() {
-  $('catList').innerHTML = S.catalogo.map(p => `<option value="${esc(p.codice)}">${esc([p.tipoUnita, p.descrizione].filter(Boolean).join(' · '))}</option>`).join('');
+/* Scelta del codice di un pallet: menù a tendina ricostruito dall'elenco prodotti attuale
+   (su iPhone apre la ruota nativa; la datalist di Safari non si aggiornava). */
+function opzioniCodice(cod) {
+  const m = cod ? trovaProdotto(cod) : null;
+  let h = `<option value="">${S.catalogo.length ? 'Scegli…' : 'Nessun prodotto: aggiungilo dal menù ☰'}</option>`;
+  if (cod && !m) h += `<option value="${esc(cod)}" selected>${esc(cod)} (non in elenco)</option>`;
+  h += S.catalogo.map(p => `<option value="${esc(p.codice)}"${m && m.id === p.id ? ' selected' : ''}>${esc([etichetta(p), p.descrizione].filter(Boolean).join(' · '))}</option>`).join('');
+  return h;
+}
+function aggiornaSceltaCodici() {
+  if (!S.draft) return;
+  document.querySelectorAll('#pbody select[data-f="codice"]').forEach(sel => {
+    const i = +sel.dataset.p; if (!S.draft[i]) return;
+    sel.innerHTML = opzioniCodice(S.draft[i].codice);
+    const m = trovaProdotto(S.draft[i].codice);
+    segnaCodice(i, S.draft[i].codice && !m ? 'Questo codice non è nell\'elenco prodotti: aggiungilo dal menù Prodotti o scegline un altro.' : '');
+  });
 }
 function disegnaDrawer() {
   if (drawer.hidden) return;
@@ -1051,7 +1066,7 @@ function scheda() {
     const armed = S.armed === `svuota-${i}`;
     h += `<section class="pal" id="pal-${i}"><h3>Pallet ${i+1}<span class="pill"></span></h3>
       <div class="two">
-        <label>Codice prodotto<input id="f-${i}-codice" data-p="${i}" data-f="codice" value="${esc(p.codice)}" list="catList" autocomplete="off" spellcheck="false" placeholder="Scegli…"${dis}></label>
+        <label>Codice prodotto<select id="f-${i}-codice" data-p="${i}" data-f="codice"${dis}>${opzioniCodice(p.codice)}</select></label>
         <label><span id="ul-${i}">${p.codice ? `Unità ${tipoDi(p)}` : 'Unità per prodotto'}</span><input id="f-${i}-unita" data-p="${i}" data-f="unitaProdotto" type="number" min="0" inputmode="numeric" value="${esc(p.unitaProdotto)}"${dis}></label>
       </div>
       <p class="desc" id="d-${i}">${esc(descrizioneDi(p.codice))}</p>
@@ -1356,10 +1371,10 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   db.collection('catalogo').onSnapshot(snap => {
     S.catalogo = snap.docs.map(d => ({id:d.id, codice:'', descrizione:'', ...d.data()}))
       .sort((a,b) => a.codice.localeCompare(b.codice,'it',{numeric:true}));
-    aggiornaDatalist();
     aggiornaLuci();                     /* il tipo di unità del codice decide rotoli o scatole */
     if (!dLista.contains(document.activeElement)) disegnaDrawer();
     if (S.sez && !pannello.contains(document.activeElement)) scheda();
+    else aggiornaSceltaCodici();        /* anche con il fuoco nella scheda: l'elenco dei codici è sempre quello attuale */
     if (!lista.hidden) mostraRisultati();
   }, () => {});
   db.collection('sezioni').onSnapshot(snap => {

@@ -1,11 +1,11 @@
 /* MagManager: tiene una copia dell'app sul dispositivo, così si apre anche senza internet.
    Per distribuire una nuova versione, cambia il numero in VERSIONE: al prossimo avvio con rete
    il telefono scarica i file nuovi e quello successivo li usa. */
-const VERSIONE = 'magmanager-1';
+const VERSIONE = 'magmanager-2';
 const FILE = ['./', './index.html', './three.min.js', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSIONE).then(c => c.addAll(FILE)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSIONE).then(c => c.addAll(FILE.map(f => new Request(f, {cache: 'reload'})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
