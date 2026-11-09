@@ -28,6 +28,13 @@ html,body{height:100%}
 body{background:linear-gradient(to bottom,var(--wall) 0%,#e0e1e2 44%,var(--floor) 58%,#f0f0f0 100%);color:var(--ink);overflow:hidden;font-family:var(--body)}
 button,input,select{font:inherit;color:inherit}
 select[data-f="codice"]{text-overflow:ellipsis;font-size:16px}
+.cercaCod input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#f6f7f9;font-size:16px}
+.trovaCod{list-style:none;margin:6px 0 0;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--paper);box-shadow:0 6px 18px rgba(20,25,32,.12);display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto}
+.trovaCod button{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 10px;min-height:44px;border:0;border-radius:6px;background:none;text-align:left;cursor:pointer}
+.trovaCod button:hover,.trovaCod button:active,.trovaCod button:focus-visible{background:#e8eefc}
+.trovaCod b{font-weight:600;overflow-wrap:anywhere}
+.trovaCod small{color:var(--muted);overflow-wrap:anywhere}
+.trovaCod .hint{padding:8px 10px}
 #scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #scene.hot{cursor:pointer}
 #scene.ruota{cursor:grabbing}
@@ -899,8 +906,24 @@ function opzioniCodice(cod) {
   h += S.catalogo.map(p => `<option value="${esc(p.codice)}"${m && m.id === p.id ? ' selected' : ''}>${esc([etichetta(p), p.descrizione].filter(Boolean).join(' · '))}</option>`).join('');
   return h;
 }
+/* Ricerca del codice dentro la scheda pallet: elenco toccabile dei prodotti che contengono il testo. */
+function trovaCodici(testo) {
+  const k = chiave(testo); if (!k) return [];
+  return S.catalogo.filter(p => chiave(p.codice).includes(k) || chiave(p.descrizione).includes(k));
+}
+function mostraCod(i, testo) {
+  const ul = $(`tc-${i}`); if (!ul) return;
+  if (!chiave(testo)) { ul.hidden = true; ul.innerHTML = ''; return; }
+  const elenco = trovaCodici(testo), max = 8;
+  ul.innerHTML = elenco.length
+    ? elenco.slice(0, max).map(p => `<li><button type="button" data-act="scegli" data-p="${i}" data-cod="${esc(p.codice)}"><b>${esc(etichetta(p))}</b>${p.descrizione ? `<small>${esc(p.descrizione)}</small>` : ''}</button></li>`).join('')
+      + (elenco.length > max ? `<li class="hint">Altri ${elenco.length - max}: scrivi qualche carattere in più.</li>` : '')
+    : `<li class="hint">Nessun prodotto trovato. Aggiungilo dal menù ☰.</li>`;
+  ul.hidden = false;
+}
 function aggiornaSceltaCodici() {
   if (!S.draft) return;
+  document.querySelectorAll('#pbody input[data-q]').forEach(q => mostraCod(+q.dataset.p, q.value));
   document.querySelectorAll('#pbody select[data-f="codice"]').forEach(sel => {
     const i = +sel.dataset.p; if (!S.draft[i]) return;
     sel.innerHTML = opzioniCodice(S.draft[i].codice);
@@ -1069,6 +1092,8 @@ function scheda() {
         <label>Codice prodotto<select id="f-${i}-codice" data-p="${i}" data-f="codice"${dis}>${opzioniCodice(p.codice)}</select></label>
         <label><span id="ul-${i}">${p.codice ? `Unità ${tipoDi(p)}` : 'Unità per prodotto'}</span><input id="f-${i}-unita" data-p="${i}" data-f="unitaProdotto" type="number" min="0" inputmode="numeric" value="${esc(p.unitaProdotto)}"${dis}></label>
       </div>
+      <div class="cercaCod"><input type="search" id="q-${i}" data-p="${i}" data-q="1" aria-label="Cerca il codice prodotto del pallet ${i+1}" placeholder="🔍 Cerca codice o descrizione…" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" enterkeyhint="search"${dis}>
+        <ul class="trovaCod" id="tc-${i}" hidden></ul></div>
       <p class="desc" id="d-${i}">${esc(descrizioneDi(p.codice))}</p>
       <p class="err" id="ce-${i}" role="alert"${!p.codice || trovaProdotto(p.codice) ? ' hidden' : ''}>${p.codice && !trovaProdotto(p.codice) ? 'Questo codice non è nell\'elenco prodotti: aggiungilo dal menù Prodotti o scegline un altro.' : ''}</p>
       <div class="lotti"><h4>Lotti</h4>
@@ -1122,12 +1147,21 @@ pannello.addEventListener('change', e => {
 });
 pannello.addEventListener('input', e => {
   const el = e.target, i = +el.dataset.p, f = el.dataset.f;
+  if (el.dataset.q && S.draft?.[i]) return mostraCod(i, el.value);
   if (!f || !S.draft?.[i]) return;
   if (f === 'codice') { S.armed = null; leggiCodice(el, i, false); return; }
   if (el.dataset.l !== undefined) S.draft[i].lotti[+el.dataset.l][f] = el.value;
   else S.draft[i][f] = el.value;
   S.armed = null;
   salvaPresto();
+});
+/* Invio nella ricerca: se c'è un solo prodotto corrispondente, lo sceglie. */
+pannello.addEventListener('keydown', e => {
+  const el = e.target; if (e.key !== 'Enter' || !el.dataset.q) return;
+  e.preventDefault();
+  const r = trovaCodici(el.value);
+  if (r.length === 1) $(`tc-${el.dataset.p}`)?.querySelector('[data-act="scegli"]')?.click();
+  else el.blur();
 });
 pannello.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b || !S.draft) return;
@@ -1143,6 +1177,13 @@ pannello.addEventListener('click', e => {
     S.draft.pop();
   } else if (act === 'lotto') S.draft[i].lotti.push({lotto:'', unita:''});
   else if (act === 'toglilotto') S.draft[i].lotti.splice(+b.dataset.l, 1);
+  else if (act === 'scegli') {
+    const m = trovaProdotto(b.dataset.cod); if (!m) return;
+    S.draft[i].codice = m.codice; S.armed = null;
+    scheda(); salvaPresto();
+    $(`f-${i}-unita`)?.focus();          /* subito dopo il codice si scrivono le unità */
+    return;
+  }
   else if (act === 'svuota') {
     if (S.armed !== `svuota-${i}`) { S.armed = `svuota-${i}`; return scheda(); }
     S.draft[i] = palletVuoto();
